@@ -20,6 +20,7 @@ from justapk import APKDownloader
 
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "artifacts" / "edge-android-e2e"
+TEMP = ROOT / ".tmp" / "edge-android-e2e"
 EDGE_PACKAGE = "com.microsoft.emmx.canary"
 EDGE_VERSION = "153.0.4201.0"
 MICROSOFT_CERT_SHA256 = "01e1999710a82c2749b4d50c445dc85d670b6136089d0a766a73827c82a1eac9"
@@ -76,8 +77,15 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def extract_certificate_sha256(cert_output: str) -> str:
+    match = re.search(r"certificate SHA-256 digest:\s*([0-9a-fA-F]+)", cert_output)
+    if not match:
+        raise AssertionError(f"could not read Edge signing certificate\n{cert_output}")
+    return match.group(1).lower()
+
+
 def download_and_verify_edge() -> Path:
-    apk_dir = ARTIFACTS / "apk"
+    apk_dir = TEMP / "apk"
     apk_dir.mkdir(parents=True, exist_ok=True)
     cached_apk = apk_dir / f"{EDGE_PACKAGE}-{EDGE_VERSION}.apk"
     if cached_apk.exists():
@@ -95,10 +103,7 @@ def download_and_verify_edge() -> Path:
 
     apksigner = locate_android_tool("apksigner")
     cert_output = run(apksigner, "verify", "--print-certs", str(apk)).stdout
-    match = re.search(r"Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]+)", cert_output)
-    if not match:
-        raise AssertionError(f"could not read Edge signing certificate\n{cert_output}")
-    cert_sha256 = match.group(1).lower()
+    cert_sha256 = extract_certificate_sha256(cert_output)
     if cert_sha256 != MICROSOFT_CERT_SHA256:
         raise AssertionError(f"unexpected Edge signing certificate: {cert_sha256}")
 
@@ -121,7 +126,8 @@ def build_crx() -> tuple[Path, str]:
         raise RuntimeError("dist/edge-android is missing; run npm run build first")
     package_dir = ARTIFACTS / "extension"
     package_dir.mkdir(parents=True, exist_ok=True)
-    key = package_dir / "edge-android-e2e.pem"
+    TEMP.mkdir(parents=True, exist_ok=True)
+    key = TEMP / "edge-android-e2e.pem"
     crx = package_dir / "chatgpt-route-inspector-edge-android.crx"
     creator.create_private_key_file(str(key))
     creator.create_crx_file(str(extension_dir), str(key), str(crx))
@@ -435,6 +441,9 @@ def main() -> None:
 
 def self_check() -> None:
     APKDownloader()
+    sample_cert_output = "V2 Signer: certificate SHA-256 digest: 01E1999710A82C2749B4D50C445DC85D670B6136089D0A766A73827C82A1EAC9"
+    if extract_certificate_sha256(sample_cert_output) != MICROSOFT_CERT_SHA256:
+        raise AssertionError("apksigner certificate parser self-check failed")
     crx, crx_id = build_crx()
     if not crx.is_file() or crx.stat().st_size == 0:
         raise AssertionError("CRX3 self-check produced no package")

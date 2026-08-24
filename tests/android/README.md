@@ -21,6 +21,8 @@ The test downloads a pinned Edge Canary APK through `justapk` using the APKPure 
 
 The APK file SHA-256 is recorded in the job log for evidence but is not used as the trust root because mirror-side packaging can change the file digest. The Microsoft signer certificate, package name, pinned version, and `arm64-v8a` ABI are mandatory. A re-signed APK or a different package/version/ABI fails before installation.
 
+Downloaded APKs and the ephemeral CRX signing key live under `.tmp/edge-android-e2e` and are never uploaded as CI evidence. The evidence artifact contains only test outputs such as the generated CRX, screenshots, UI dumps, and logcat.
+
 ## What is asserted
 
 The emulator test verifies:
