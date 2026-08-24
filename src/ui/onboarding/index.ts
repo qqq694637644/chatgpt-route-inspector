@@ -14,8 +14,8 @@ bindLanguageSwitch(async (uiLanguage) => {
   const response = await send({ type: 'route:update-settings', settings: { uiLanguage } });
   if (response.state) render(response.state);
 });
-document.querySelector('#dashboard')?.addEventListener('click', () => void chrome.tabs.create({ url: chrome.runtime.getURL('ui/dashboard/index.html') }));
-document.querySelector('#options')?.addEventListener('click', () => void chrome.runtime.openOptionsPage());
+document.querySelector('#dashboard')?.addEventListener('click', () => void send({ type: 'route:open-page', page: 'dashboard' }));
+document.querySelector('#options')?.addEventListener('click', () => void send({ type: 'route:open-page', page: 'options' }));
 
 void getState().then((initial) => {
   render(initial);

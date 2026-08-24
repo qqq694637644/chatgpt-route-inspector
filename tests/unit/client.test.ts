@@ -9,7 +9,6 @@ function stateWith(turns: RouteTurn[] = [], powReadings: PowReading[] = []): Ins
     settings: {
       overlayEnabled: true,
       overlayMode: 'full',
-      overlayMinimized: false,
       retentionLimit: 100,
       includeRequestIdsInExport: false,
       autoCaptureEnabled: true,

@@ -26,9 +26,9 @@ async function zipDirectory(source, target) {
   });
 }
 
-const name = `chatgpt-route-inspector-${version}.zip`;
+const name = `chatgpt-route-inspector-edge-android-${version}.zip`;
 const target = path.join(releaseDir, name);
-await zipDirectory(path.join(root, 'dist', 'extension'), target);
+await zipDirectory(path.join(root, 'dist', 'edge-android'), target);
 const hash = createHash('sha256').update(await readFile(target)).digest('hex');
 await writeFile(path.join(releaseDir, 'SHA256SUMS.txt'), `${hash}  ${name}\n`, 'utf8');
 process.stdout.write(`Packaged releases in ${releaseDir}\n`);

@@ -5,6 +5,7 @@ function manifest() {
   return JSON.parse(readFileSync(new URL('../../manifest/manifest.json', import.meta.url), 'utf8')) as {
     manifest_version: number;
     version: string;
+    minimum_chrome_version: string;
     permissions: string[];
     host_permissions: string[];
     content_scripts: Array<{ matches: string[]; world: string }>;
@@ -23,14 +24,16 @@ function pngDimensions(relativePath: string): { width: number; height: number } 
 }
 
 describe('extension permissions', () => {
-  it('uses one minimal manifest with no browser debugging permission', () => {
+  it('targets Edge Android 151+ with no legacy browser compatibility surface', () => {
     const value = manifest();
     expect(value.manifest_version).toBe(3);
-    expect(value.version).toBe('1.0.3');
+    expect(value.version).toBe('2.0.0');
+    expect(value.minimum_chrome_version).toBe('151');
     expect(value.permissions).toEqual(['storage']);
     expect(value.permissions).not.toContain('activeTab');
     expect(value.permissions).not.toContain('debugger');
-    expect(value.host_permissions).toEqual(['https://chatgpt.com/*', 'https://chat.openai.com/*']);
+    expect(value.host_permissions).toEqual(['https://chatgpt.com/*']);
+    expect(value.content_scripts.every((script) => script.matches.every((match) => match.startsWith('https://chatgpt.com/')))).toBe(true);
     expect(value.content_scripts.map((script) => script.world)).toEqual(['MAIN', 'ISOLATED']);
     expect(value.default_locale).toBe('en');
     expect(value.name).toBe('__MSG_extensionName__');

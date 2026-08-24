@@ -14,9 +14,9 @@ export type ModelLabelSource =
   | 'assistant.metadata.model_slug'
   | 'assistant[data-message-model-slug]';
 
-export function normalizeOverlayMode(value: unknown, legacyMinimized = false): OverlayMode {
+export function normalizeOverlayMode(value: unknown): OverlayMode {
   if (value === 'full' || value === 'compact' || value === 'mini' || value === 'docked') return value;
-  return legacyMinimized ? 'compact' : 'full';
+  return 'full';
 }
 
 export interface RouteFields {
@@ -83,8 +83,6 @@ export interface RouteTurn extends RouteFields, RouteAssessment {
 export interface InspectorSettings {
   overlayEnabled: boolean;
   overlayMode: OverlayMode;
-  /** Kept in storage for compatibility with releases that only knew two overlay states. */
-  overlayMinimized: boolean;
   retentionLimit: number;
   includeRequestIdsInExport: boolean;
   autoCaptureEnabled: boolean;
@@ -139,7 +137,6 @@ export const EMPTY_ROUTE_FIELDS: RouteFields = {
 export const DEFAULT_SETTINGS: InspectorSettings = {
   overlayEnabled: true,
   overlayMode: 'full',
-  overlayMinimized: false,
   retentionLimit: 100,
   includeRequestIdsInExport: false,
   autoCaptureEnabled: true,

@@ -120,7 +120,7 @@ async function setOverlayEnabled(overlayEnabled: boolean): Promise<void> {
   const response = await send({
     type: 'route:update-settings',
     settings: overlayEnabled
-      ? { overlayEnabled: true, overlayMode: 'full', overlayMinimized: false }
+      ? { overlayEnabled: true, overlayMode: 'full' }
       : { overlayEnabled: false }
   });
   if (response.state) render(response.state);
@@ -135,8 +135,8 @@ document.querySelectorAll<HTMLButtonElement>('[data-mode]').forEach((button) => 
 document.querySelectorAll<HTMLButtonElement>('[data-overlay]').forEach((button) => button.addEventListener('click', () => {
   void setOverlayEnabled(button.dataset.overlay === 'show');
 }));
-document.querySelector('#dashboard')?.addEventListener('click', () => void send({ type: 'route:open-dashboard' }));
-document.querySelector('#options')?.addEventListener('click', () => void chrome.runtime.openOptionsPage());
+document.querySelector('#dashboard')?.addEventListener('click', () => void send({ type: 'route:open-page', page: 'dashboard' }));
+document.querySelector('#options')?.addEventListener('click', () => void send({ type: 'route:open-page', page: 'options' }));
 document.querySelector('#copy')?.addEventListener('click', async () => {
   const turn = latestForTab(state, activeTabId, state.settings.captureMode);
   if (!turn) return showFeedback('status.noRecord', 'amber');
