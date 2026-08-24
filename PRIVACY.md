@@ -1,12 +1,12 @@
 # Privacy Policy
 
-Effective date: August 11, 2026
+Effective date: August 24, 2026
 
-ChatGPT Route Inspector (the “Extension”) is a local model-route inspection tool for Chromium browsers. This policy explains how the Extension handles data.
+ChatGPT Route Inspector (the “Extension”) is a local model-route inspection extension for Microsoft Edge for Android 151 and later. This policy explains how the Extension handles data.
 
 ## Data handled
 
-The Extension processes only information needed for model-route inspection on `chatgpt.com` and `chat.openai.com`, including:
+The Extension processes only information needed for model-route inspection on `https://chatgpt.com/`, including:
 
 - model identifiers requested by the web client;
 - route models reported by server responses and related model labels;
@@ -43,26 +43,26 @@ The Extension does not sell data, use data for advertising, or provide data to d
 
 ## Local storage and retention
 
-Settings and inspection records are stored in `chrome.storage.local` in the current browser profile and are not synchronized to the developer’s servers. The configured record limit controls retention; when the limit is reached, the oldest records are removed automatically.
+Settings and inspection records are stored in `chrome.storage.local` inside the current Microsoft Edge profile. `chrome.storage.local` is the Chromium extension API namespace exposed by Microsoft Edge; using that namespace does not imply Google Chrome support.
 
-Users can clear local records from the Settings & Privacy page. Chrome removes the Extension’s local storage when the Extension is uninstalled.
+The configured record limit controls retention. When the limit is reached, the oldest records are removed automatically. Users can clear local records from the Extension's Settings & Privacy page. Removing the Extension also removes its extension-local data according to Microsoft Edge platform behavior.
 
 ## Data transmission and exports
 
-The Extension does not automatically transmit inspection data to the developer or any third-party server. If a user clicks an author, GitHub, or other external link, the browser opens that website through normal navigation.
+The Extension does not automatically transmit inspection data to the developer or any third-party server. If a user opens an author, GitHub, or other external link, Microsoft Edge navigates to that website normally.
 
 Copying a summary, exporting JSON, or exporting a report requires an explicit user action. Exports contain routing-diagnostic fields only. Request identifiers are redacted by default and are included in full only when the user explicitly enables that setting.
 
 ## Browser permissions
 
-- `storage`: stores settings and inspection records in the current Chrome profile.
-- `https://chatgpt.com/*` and `https://chat.openai.com/*`: reads allowlisted routing fields on supported ChatGPT pages and displays the page overlay.
+- `storage`: stores settings and inspection records in the current Microsoft Edge profile.
+- `https://chatgpt.com/*`: reads allowlisted routing fields on supported ChatGPT pages and displays the page overlay.
 
 The Extension does not request `debugger`, `cookies`, `webRequest`, `history`, or access to all websites.
 
-## Chrome Web Store Limited Use
+## Microsoft Edge Add-ons distribution
 
-The Extension’s use of information received from Chrome APIs complies with the Chrome Web Store User Data Policy, including the Limited Use requirements. Data is used only to provide the user-facing features clearly described by the Extension.
+The production distribution target is Microsoft Edge Add-ons. Information received through Microsoft Edge extension APIs is used only for the user-facing inspection features described in this policy. The project does not maintain a Google Chrome or Chrome Web Store compatibility/distribution path starting with version 2.0.
 
 ## Changes to this policy
 
@@ -70,4 +70,4 @@ If the Extension’s data-handling practices change, this policy will be updated
 
 ## Contact
 
-For privacy questions, contact the project maintainer through [GitHub Issues](https://github.com/Liu-Bot24/chatgpt-route-inspector/issues).
+For privacy questions, contact the project maintainer through [GitHub Issues](https://github.com/qqq694637644/chatgpt-route-inspector/issues).

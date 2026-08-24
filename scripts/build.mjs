@@ -4,18 +4,13 @@ import { fileURLToPath } from 'node:url';
 import { build } from 'esbuild';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const requestedTarget = process.argv[2] ?? 'extension';
-const validTargets = new Set(['extension', 'e2e']);
-
-if (!validTargets.has(requestedTarget)) {
-  throw new Error(`Unknown build target: ${requestedTarget}`);
-}
+const target = 'edge-android';
 
 const uiEntries = ['popup', 'dashboard', 'options', 'onboarding'];
 const commonBuild = {
   absWorkingDir: root,
   bundle: true,
-  target: 'chrome111',
+  target: 'chrome151',
   logLevel: 'info',
   legalComments: 'none',
   sourcemap: false
@@ -30,11 +25,9 @@ async function copy(source, target) {
   await copyFile(path.join(root, source), target);
 }
 
-async function buildTarget(target) {
+async function buildTarget() {
   const outdir = path.join(root, 'dist', target);
-  const allowedOrigins = target === 'e2e'
-    ? ['https://chatgpt.com', 'https://chat.openai.com', 'http://127.0.0.1:43996']
-    : ['https://chatgpt.com', 'https://chat.openai.com'];
+  const allowedOrigins = ['https://chatgpt.com'];
   const define = {
     __ROUTE_INSPECTOR_ALLOWED_ORIGINS__: JSON.stringify(allowedOrigins)
   };
@@ -71,13 +64,8 @@ async function buildTarget(target) {
   await cp(path.join(root, 'icons'), path.join(outdir, 'icons'), { recursive: true });
 
   const manifest = JSON.parse(await readFile(path.join(root, 'manifest', 'manifest.json'), 'utf8'));
-  if (target === 'e2e') {
-    manifest.name = 'ChatGPT Route Inspector — E2E';
-    manifest.host_permissions.push('http://127.0.0.1/*');
-    for (const contentScript of manifest.content_scripts) contentScript.matches.push('http://127.0.0.1/*');
-  }
   await writeFile(path.join(outdir, 'manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
   process.stdout.write(`Built ${target}: ${outdir}\n`);
 }
 
-await buildTarget(requestedTarget);
+await buildTarget();

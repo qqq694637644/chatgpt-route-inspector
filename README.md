@@ -1,71 +1,66 @@
 <div align="center">
 
-# ChatGPT Route Inspector
+# ChatGPT Route Inspector · Edge Android
 
-![Stars](https://img.shields.io/github/stars/Liu-Bot24/chatgpt-route-inspector?style=flat&label=Stars&cache=20260811) ![Forks](https://img.shields.io/github/forks/Liu-Bot24/chatgpt-route-inspector?style=flat&label=Forks&cache=20260811) ![Views 14d](https://github-stats.liu-qi.cn/api/badge/Liu-Bot24/chatgpt-route-inspector/views14d.svg?v=4) ![Clones 14d](https://github-stats.liu-qi.cn/api/badge/Liu-Bot24/chatgpt-route-inspector/clones14d.svg?v=4) ![Downloads](https://img.shields.io/github/downloads/Liu-Bot24/chatgpt-route-inspector/total?style=flat&label=Downloads&cache=20260811) ![Release](https://img.shields.io/github/v/release/Liu-Bot24/chatgpt-route-inspector?style=flat&label=Release&cache=20260811)
-
-![ChatGPT 模型路由检测器预览](assets/promotional/chatgpt-route-inspector-1200x510-zh.png)
+面向 **Microsoft Edge for Android 151+** 的 ChatGPT 模型路由检测扩展。
 
 Languages: [简体中文](README.md) · [English](README-en.md)
 
 </div>
 
-## 产品介绍
+## 2.0 破坏式更新
 
-ChatGPT Route Inspector 是一款适用于 Chromium 浏览器的 ChatGPT 模型路由检测扩展。它能够同时显示网页端发送的请求模型与服务器响应报告的路由模型，帮助用户核验 Pro 请求是否仍由 Pro 响应，或是否被路由到其他模型。
+2.0 起项目只面向 Microsoft Edge for Android，不再维护以下兼容路径：
 
-扩展直接读取请求与响应中可用的模型信息，不根据回答速度、写作风格、主观质量或模型自述推测结果。
+- Google Chrome / Chrome Web Store；
+- Edge 桌面版以及其他 Chromium 浏览器；
+- Chromium / Edge 150 及更早版本；
+- `chat.openai.com` 旧域名；
+- 桌面扩展的 `options_ui` / `openOptionsPage` 入口。
 
-本项目是独立的非官方工具，与 OpenAI 不存在隶属、授权或背书关系。
-
-## 界面预览
-
-以下示例展示请求模型为 `GPT 5.6 Pro`、响应路由为 `GPT 5.5 mini` 时的界面。
-
-### Popup
-
-<p align="center">
-  <img src="docs/images/popup-zh.png" width="640" alt="ChatGPT Route Inspector 中文 Popup">
-</p>
-
-### 页面浮窗
-
-<p align="center">
-  <img src="docs/images/overlay-zh.png" width="420" alt="ChatGPT Route Inspector 中文页面浮窗">
-</p>
-
-### 路由诊断台
-
-<p align="center">
-  <img src="docs/images/dashboard-zh.png" width="100%" alt="ChatGPT Route Inspector 中文路由诊断台">
-</p>
+代码仍使用 `chrome.*` 命名空间，因为 Microsoft Edge 的 Chromium 扩展 API 本身使用这一命名空间；这不表示继续兼容 Google Chrome。
 
 ## 功能
 
-- **实时请求检测**：发送新消息后，显示本轮请求模型与响应路由。
-- **会话重载检测**：刷新已有会话，读取已完成回答中可用的响应路由信息。
-- **页面浮窗**：在 ChatGPT 页面直接查看结果，支持完整、极简、迷你、边缘收纳和隐藏状态。
-- **路由诊断台**：查看本机记录、证据信息，并导出 Markdown 或 JSON 报告。
-- **PoW 难度显示**：显示原始十六进制难度值及其十进制换算结果。
-- **中英文界面**：Popup、浮窗、诊断台、设置和报告均支持中文与英文。
-- **本地优先**：检测记录保存在当前浏览器，不上传到第三方服务器。
+- **实时请求检测**：显示 ChatGPT 网页请求的模型与服务器响应报告的路由模型。
+- **会话重载检测**：刷新已有会话后读取可用的路由字段和模型标签。
+- **页面浮窗**：直接在 ChatGPT 页面查看请求模型、响应路由和 PoW 难度。
+- **移动端 Popup**：针对窄屏和触控重新布局，不依赖桌面工具栏尺寸。
+- **路由诊断台**：查看本机记录并导出 Markdown / JSON。
+- **本地优先**：记录保存在 Edge 当前配置文件的 `chrome.storage.local`，不会自动上传。
 
-## 安装
+扩展只展示网页请求与响应中实际存在的字段，不根据速度、回答风格、模型自述或主观质量猜测模型。
 
-### 从 Chrome 应用商店安装
+## 平台基线
 
-[在 Chrome 应用商店安装 ChatGPT 模型路由检测器](https://chromewebstore.google.com/detail/fbbnebcnkekjjmenncangmdhojamjcli)
+- Microsoft Edge for Android **151+**
+- Manifest V3
+- 目标站点仅 `https://chatgpt.com/*`
+- 依赖的 Edge Android 扩展 API：`action`、`runtime`、`storage`、`tabs`、`i18n`
 
-### 手动安装发布包
+项目不提供旧平台兜底分支。若 Edge Android 缺少上述能力或版本低于 151，扩展应直接视为不受支持。
 
-1. 下载并解压 [`chatgpt-route-inspector-1.0.3.zip`](https://github.com/Liu-Bot24/chatgpt-route-inspector/releases/download/v1.0.3/chatgpt-route-inspector-1.0.3.zip)。
-2. 打开 `chrome://extensions/`。
-3. 开启右上角的“开发者模式”。
-4. 点击“加载已解压的扩展程序”。
-5. 选择解压后的扩展目录。
-6. 刷新已经打开的 ChatGPT 页面。
+## Android 安装与分发
 
-### 从源码构建
+### Microsoft Edge Add-ons
+
+正式分发目标是 **Microsoft Edge Add-ons**。构建出的 ZIP 用于 Partner Center 提交；通过审核后仍需在 Android 真机确认该商店条目已对 Edge 移动端开放，不能把桌面商店审核通过等同于 Android 可安装。
+
+本仓库不再提供 Chrome Web Store 安装方式。
+
+### 企业托管 Android
+
+获得 Edge Add-ons 的扩展 ID / 更新地址后，可由管理员通过 Edge Android 的 `ExtensionInstallForcelist` / `ExtensionSettings` 策略进行托管部署。
+
+### Release 与 Android 真机验证
+
+构建、GitHub Release、Microsoft Edge Add-ons 提交和手机安装流程见 [构建、Release 与 Edge Android 手机安装](docs/release-and-install.md)。
+
+`dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked、Windows Playwright 或 GitHub x86_64 Android emulator 都不属于 Edge Android 真机验收**。
+
+公开 Microsoft Edge Android APK 当前没有可用的 x86_64 变体；在 GitHub 标准 x86_64 AVD 中安装 ARM64-only Edge 会走 ARM translation，并已观察到 Edge 进程 `SIGSEGV`。因此本仓库不再保留 GitHub Android E2E workflow。Android 运行验收改为真实 Android Edge 设备上的手工验收或受控发布验收。
+
+## 从源码构建
 
 需要 Node.js 20 或更高版本。
 
@@ -74,91 +69,69 @@ npm ci
 npm run build
 ```
 
-构建后的扩展位于 `dist/extension`。在 `chrome://extensions/` 中选择“加载已解压的扩展程序”，然后选择该目录。
+构建结果：
+
+```text
+dist/edge-android/
+```
+
+生成 Partner Center 提交包：
+
+```powershell
+npm run package
+```
+
+输出：
+
+```text
+release/chatgpt-route-inspector-edge-android-2.0.0.zip
+release/SHA256SUMS.txt
+```
 
 ## 使用方法
 
 ### 检测新回答
 
-1. 打开 ChatGPT 并进入目标会话。
-2. 点击扩展图标，选择“实时请求”。
-3. 在 ChatGPT 中选择模型并发送一条消息。
-4. 在 Popup 或页面浮窗中查看“请求模型 → 响应路由”。
+1. 在 Edge Android 中打开 `https://chatgpt.com/` 并进入目标会话。
+2. 从 Edge 的扩展入口打开 Route Inspector。
+3. 选择“实时请求”。
+4. 在 ChatGPT 中发送消息。
+5. 在 Popup 或页面浮窗查看“请求模型 → 响应路由”。
 
 ### 复查已有回答
 
-1. 在 Popup 中选择“会话重载”。
+1. 在扩展 Popup 中选择“会话重载”。
 2. 刷新当前 ChatGPT 会话。
-3. 查看该会话中已读取到的响应路由。
-
-### 管理页面浮窗
-
-- 点击右上角的“极简模式”按钮，可显示请求模型、响应路由和 PoW 难度。
-- 点击“迷你模式”按钮，可将浮窗贴靠到右侧边缘，仅显示响应路由值和 PoW 十进制值。
-- 点击极简浮窗可恢复完整状态。
-- 在迷你浮窗中，点击左侧窄边区域可将其收纳到窗口右侧；点击其余内容区域可恢复完整状态。
-- 点击收纳后保留在窗口右侧的窄边条，可恢复迷你浮窗。
-- 点击“隐藏浮窗”后，浮窗会从页面完全消失。
-- 如需重新显示，请在扩展 Popup 中点击“显示浮窗”。
-
-## 结果说明
-
-| 显示内容 | 含义 |
-|---|---|
-| 请求模型 | ChatGPT 网页端为本轮消息发送的模型 |
-| 响应路由 | 服务器响应中报告的本轮路由模型 |
-| 模型标签 | 回答记录附带的模型标签，仅作为补充信息 |
-| PoW 难度 | 原始十六进制值及其十进制换算结果 |
-
-如果某项显示为 `—`，表示本轮没有读取到对应信息。扩展不会对缺失结果进行猜测。
-
-如需使用 Chrome DevTools 进行交叉核验，请参阅 [Chrome 手工核验指南](docs/chrome-manual-verification.md)。
+3. 查看当前会话可读取到的响应路由和模型标签。
 
 ## 隐私与权限
 
-完整的数据处理说明请参阅 [隐私政策](PRIVACY.md)。
+完整说明见 [PRIVACY.md](PRIVACY.md)。
 
-扩展仅保存路由检测所需的数据，包括模型信息、PoW 难度、时间、耗时、记录来源和扩展设置。
-
-扩展不会保存或上传：
-
-- 提示词和回答正文；
-- Cookie、登录凭据或其他身份验证信息；
-- 附件内容与文件名；
-- 未经筛选的网络请求、响应或 HAR 文件。
-
-### 浏览器权限
-
-| 权限 | 用途 |
+| 权限 / 主机 | 用途 |
 |---|---|
-| `storage` | 在本机保存设置与检测记录 |
-| `chatgpt.com` / `chat.openai.com` | 在支持的 ChatGPT 页面读取模型路由信息 |
+| `storage` | 在 Edge 当前配置文件保存设置与检测记录 |
+| `https://chatgpt.com/*` | 注入路由检测脚本并显示页面浮窗 |
 
-扩展不申请 `debugger` 权限，也不监控其他网站或一般浏览器流量。
+扩展不申请 `debugger`、`cookies`、`webRequest`、`history` 或 `<all_urls>` 权限，也不会保存提示词、回答正文、Cookie、Authorization、JWT、附件内容或完整网络响应。
 
-## 兼容性与限制
+## Android 真机验收
 
-- 支持 Chrome 111 及更高版本，以及其他兼容 Manifest V3 的 Chromium 浏览器。
-- 扩展只观察并显示信息，不会修改 ChatGPT 请求、响应、模型选择、账号权限或用量限制。
-- 可显示的内容取决于 ChatGPT 网页响应中实际提供的信息；网站结构更新后，部分信息可能暂时无法读取。
-- PoW 难度仅作为原始数值展示，不代表 OpenAI 官方的账号状态或风险结论。
+Android 真机的安装、交互与路由捕获验收项见 [Edge Android 手工核验指南](docs/edge-android-manual-verification.md)。构建、Release 和手机安装流程见 [Release 指南](docs/release-and-install.md)。
 
-## 开发
+## 开发验证
 
 ```powershell
 npm run typecheck
 npm run lint
 npm test
-npm run test:e2e
+npm run build
+npm run verify:edge-android
 npm run package
 ```
 
-发布包与 SHA-256 校验文件输出到 `release/`。
-
-## 友情链接
-
-- [LINUX DO](https://linux.do/) — 新的理想型社区
+本仓库不再保留 GitHub Android E2E workflow；公开 Edge Android APK 缺少 x86_64 变体，GitHub x86_64 AVD 无法代表真实 Edge Android 运行环境。真实手机/平板验收见手工核验指南。
 
 ## 免责声明
 
-本项目不隶属于 OpenAI，也未获得 OpenAI 官方认可。ChatGPT、OpenAI 及相关标识是其各自权利人的商标。扩展仅展示 ChatGPT 网页请求与响应中可读取的信息，不构成对 OpenAI 内部基础设施、计费系统或账号状态的官方证明。
+本项目是独立的非官方工具，与 OpenAI 或 Microsoft 不存在隶属、授权或背书关系。ChatGPT、OpenAI、Microsoft Edge 及相关标识属于各自权利人。扩展显示的是 ChatGPT 网页请求与响应中可读取的信息，不构成对 OpenAI 内部基础设施、计费系统或账号状态的官方证明。

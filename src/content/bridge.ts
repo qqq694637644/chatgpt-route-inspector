@@ -172,7 +172,7 @@ function render(): void {
   if (!root) return;
   const language = state.settings.uiLanguage;
   const mode = state.settings.captureMode;
-  const overlayMode = state.settings.overlayMode ?? (state.settings.overlayMinimized ? 'compact' : 'full');
+  const overlayMode = state.settings.overlayMode;
   const turn = currentTurn();
   const pow = currentPowReading();
   const copy = overlayVerdictCopy(turn, mode, language);
@@ -277,14 +277,14 @@ function render(): void {
   root.innerHTML = overlayMode === 'docked' ? dockedOverlay : overlayMode === 'mini' ? miniOverlay : overlayMode === 'compact' ? compactOverlay : fullOverlay;
   root.getElementById('mode-live')?.addEventListener('click', () => void updateSettings({ captureMode: 'live' }));
   root.getElementById('mode-reload')?.addEventListener('click', () => void updateSettings({ captureMode: 'reload' }));
-  root.getElementById('compact')?.addEventListener('click', () => void updateSettings({ overlayMode: 'compact', overlayMinimized: true, captureMode: 'live' }));
-  root.getElementById('mini')?.addEventListener('click', () => void updateSettings({ overlayMode: 'mini', overlayMinimized: true, captureMode: 'live' }));
-  root.getElementById('mini-dock')?.addEventListener('click', () => void updateSettings({ overlayMode: 'docked', overlayMinimized: true }));
-  root.getElementById('mini-undock')?.addEventListener('click', () => void updateSettings({ overlayMode: 'mini', overlayMinimized: true }));
-  root.getElementById('expand')?.addEventListener('click', () => void updateSettings({ overlayMode: 'full', overlayMinimized: false }));
+  root.getElementById('compact')?.addEventListener('click', () => void updateSettings({ overlayMode: 'compact', captureMode: 'live' }));
+  root.getElementById('mini')?.addEventListener('click', () => void updateSettings({ overlayMode: 'mini', captureMode: 'live' }));
+  root.getElementById('mini-dock')?.addEventListener('click', () => void updateSettings({ overlayMode: 'docked' }));
+  root.getElementById('mini-undock')?.addEventListener('click', () => void updateSettings({ overlayMode: 'mini' }));
+  root.getElementById('expand')?.addEventListener('click', () => void updateSettings({ overlayMode: 'full' }));
   root.getElementById('hide')?.addEventListener('click', () => void updateSettings({ overlayEnabled: false }));
   root.getElementById('dashboard')?.addEventListener('click', () => {
-    void chrome.runtime.sendMessage<RuntimeRequest>({ type: 'route:open-dashboard' });
+    void chrome.runtime.sendMessage<RuntimeRequest>({ type: 'route:open-page', page: 'dashboard' });
   });
 }
 

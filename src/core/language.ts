@@ -13,16 +13,5 @@ export function detectUiLanguage(locale: string | null | undefined): UiLanguage 
 }
 
 export function browserUiLanguage(): UiLanguage {
-  try {
-    if (typeof chrome !== 'undefined' && chrome.i18n?.getUILanguage) {
-      return detectUiLanguage(chrome.i18n.getUILanguage());
-    }
-  } catch {
-    // Fall through to navigator when the Chrome API is unavailable.
-  }
-  try {
-    return detectUiLanguage(globalThis.navigator?.language);
-  } catch {
-    return 'en';
-  }
+  return detectUiLanguage(chrome.i18n.getUILanguage());
 }

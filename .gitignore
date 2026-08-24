@@ -1,10 +1,14 @@
 node_modules/
+.venv/
+__pycache__/
+*.py[cod]
 dist/
 release/
 coverage/
+artifacts/
+.tmp/
 playwright-report/
 test-results/
 output/playwright/
-.tmp/
 DEVELOPMENT_LOG.md
 *.log

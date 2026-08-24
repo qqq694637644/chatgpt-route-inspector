@@ -1,10 +1,9 @@
 import { DEFAULT_SETTINGS, normalizeOverlayMode, type InspectorState, type PowObservation, type RouteObservation } from '../core/types';
 import { browserUiLanguage, normalizeUiLanguage } from '../core/language';
-import { migrateStoredTurn } from '../core/migration';
 import { normalizePowObservation, upsertPowReading } from '../core/pow';
 import { upsertTurn } from '../core/turns';
 
-const STORAGE_KEY = 'chatgptRouteInspectorStateV1';
+export const STORAGE_KEY = 'chatgptRouteInspectorStateV2';
 let queue = Promise.resolve();
 
 export function defaultState(): InspectorState {
@@ -20,9 +19,7 @@ export async function readState(): Promise<InspectorState> {
   const stored = await chrome.storage.local.get(STORAGE_KEY);
   const candidate = stored[STORAGE_KEY] as Partial<InspectorState> | undefined;
   if (!candidate) return defaultState();
-  const turns = Array.isArray(candidate.turns)
-    ? candidate.turns.map(migrateStoredTurn).filter((turn): turn is NonNullable<typeof turn> => turn !== null)
-    : [];
+  const turns = Array.isArray(candidate.turns) ? candidate.turns : [];
   const powReadings = Array.isArray(candidate.powReadings)
     ? candidate.powReadings
       .map(normalizePowObservation)
@@ -30,7 +27,7 @@ export async function readState(): Promise<InspectorState> {
     : [];
   const captureMode = candidate.settings?.captureMode === 'reload' ? 'reload' : 'live';
   const uiLanguage = normalizeUiLanguage(candidate.settings?.uiLanguage) ?? browserUiLanguage();
-  const overlayMode = normalizeOverlayMode(candidate.settings?.overlayMode, candidate.settings?.overlayMinimized);
+  const overlayMode = normalizeOverlayMode(candidate.settings?.overlayMode);
   return {
     turns,
     powReadings,
@@ -39,8 +36,7 @@ export async function readState(): Promise<InspectorState> {
       ...candidate.settings,
       captureMode,
       uiLanguage,
-      overlayMode,
-      overlayMinimized: overlayMode !== 'full'
+      overlayMode
     },
     parserHealth: candidate.parserHealth ?? { lastSuccessAt: null, lastFailureAt: null, consecutiveFailures: 0 }
   };

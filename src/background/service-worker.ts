@@ -1,4 +1,4 @@
-import { defaultState, mutateState, readState, storeObservation, storePowObservation } from './storage';
+import { defaultState, mutateState, readState, STORAGE_KEY, storeObservation, storePowObservation } from './storage';
 import { normalizeUiLanguage } from '../core/language';
 import { normalizeObservation } from '../core/observation';
 import type { InspectorState, PowObservation, RouteObservation } from '../core/types';
@@ -95,12 +95,12 @@ chrome.runtime.onMessage.addListener((raw: unknown, sender, sendResponse: (respo
       const current = await readState();
       const state: InspectorState = { ...defaultState(), settings: current.settings };
       await chrome.storage.local.clear();
-      await chrome.storage.local.set({ chatgptRouteInspectorStateV1: state });
+      await chrome.storage.local.set({ [STORAGE_KEY]: state });
       await broadcast(state);
       return { ok: true, state };
     }
-    if (request.type === 'route:open-dashboard') {
-      await chrome.tabs.create({ url: chrome.runtime.getURL('ui/dashboard/index.html') });
+    if (request.type === 'route:open-page') {
+      await chrome.tabs.create({ url: chrome.runtime.getURL(`ui/${request.page}/index.html`) });
       return { ok: true };
     }
     return { ok: false, error: '未知请求。' };

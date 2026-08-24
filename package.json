@@ -1,23 +1,21 @@
 {
-  "name": "chatgpt-route-inspector",
-  "version": "1.0.3",
+  "name": "chatgpt-route-inspector-edge-android",
+  "version": "2.0.0",
   "private": true,
-  "description": "Privacy-first Chromium extension that reports ChatGPT requested and server-reported resolved models.",
+  "description": "Edge Android 151+ extension that reports ChatGPT requested and server-reported resolved models.",
   "type": "module",
   "scripts": {
     "build": "node scripts/build.mjs",
-    "build:e2e": "node scripts/build.mjs e2e",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --coverage",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "test:e2e": "npm run build:e2e && playwright test",
+    "verify:edge-android": "node scripts/verify-edge-android.mjs",
     "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "@eslint/js": "9.29.0",
-    "@playwright/test": "1.62.1",
     "@types/chrome": "0.0.326",
     "@types/node": "22.15.32",
     "@vitest/coverage-v8": "3.2.7",
