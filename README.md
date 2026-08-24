@@ -56,9 +56,9 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 `dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
 
-GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 使用 Google API 35 Android Emulator 的 ARM64 native translation 运行**真实的 arm64-v8a Microsoft Edge Canary APK**。测试会同时确认 Android 的 ABI 列表包含 `arm64-v8a`，且安装后的 Edge 包为 `primaryCpuAbi=arm64-v8a`，再通过 Edge Android 的 CRX 开发者入口加载当前构建。之后继续验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
+GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 会启动**真正的 Android `arm64-v8a` system image**，并在其中安装真实的 arm64-v8a Microsoft Edge Canary APK。AVD 使用 Android Emulator 的软件 CPU 仿真（`-accel off`），不依赖宿主嵌套虚拟化，也不走 Android 的 ARM-on-x86 native bridge。
 
-之所以不用 ARM AVD，是因为 GitHub 托管的 ARM macOS VM 不提供嵌套 Hypervisor.Framework，真实 CI 已在 `HV_UNSUPPORTED` 处验证失败。这里不把宿主架构当测试目标，也不使用桌面浏览器替代 Edge Android。
+Python 测试会强制确认 Android 自身 `ro.product.cpu.abi=arm64-v8a`、`uname -m` 为 `aarch64/arm64`、native bridge 未启用，同时确认安装后的 Edge 包为 `primaryCpuAbi=arm64-v8a`。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
 
 未发布扩展的自动化侧载使用 Edge Canary；这不改变生产基线仍为 Edge Android 151+。真实手机/平板仍应执行手工验收，尤其是商店分发、触控尺寸和下载行为。
 

@@ -56,9 +56,9 @@ After the extension has an Edge Add-ons ID / update URL, administrators can depl
 
 `dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses the Google API 35 Android Emulator's ARM64 native translation to execute a **real arm64-v8a Microsoft Edge Canary APK**. The test requires Android's ABI list to contain `arm64-v8a` and the installed Edge package to report `primaryCpuAbi=arm64-v8a`, then loads the current build through Edge Android's CRX developer-install surface. It also verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+The GitHub Actions `Edge Android arm64-v8a E2E` workflow boots a **real Android `arm64-v8a` system image** and installs a real arm64-v8a Microsoft Edge Canary APK inside it. The AVD uses Android Emulator software CPU emulation (`-accel off`), so it does not depend on nested host virtualization and does not use Android's ARM-on-x86 native bridge.
 
-A true ARM AVD is not used because the GitHub-hosted ARM macOS VM does not expose nested Hypervisor.Framework; the real CI run failed at `HV_UNSUPPORTED`. The CI host architecture is not a test target, and no desktop browser substitutes for Edge Android.
+The Python test requires Android itself to report `ro.product.cpu.abi=arm64-v8a`, `uname -m` as `aarch64`/`arm64`, no active native bridge, and the installed Edge package as `primaryCpuAbi=arm64-v8a`. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
 
 Automated sideloading of an unpublished extension uses Edge Canary; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
 

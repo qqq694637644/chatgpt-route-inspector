@@ -53,10 +53,17 @@ def ensure_arm64_android() -> None:
     abi = adb("shell", "getprop", "ro.product.cpu.abi").stdout.strip()
     abi_list = adb("shell", "getprop", "ro.product.cpu.abilist").stdout.strip()
     native_bridge = adb("shell", "getprop", "ro.dalvik.vm.native.bridge").stdout.strip()
-    supported_abis = {value.strip() for value in abi_list.split(",") if value.strip()}
-    log(f"device Android {release}, API {api}, primary ABI {abi}, ABI list {abi_list}, native bridge {native_bridge or '<none>'}")
-    if "arm64-v8a" not in supported_abis:
-        raise AssertionError(f"Android image does not advertise arm64-v8a support: {abi_list}")
+    machine = adb("shell", "uname", "-m").stdout.strip()
+    log(
+        f"device Android {release}, API {api}, primary ABI {abi}, ABI list {abi_list}, "
+        f"kernel machine {machine}, native bridge {native_bridge or '<none>'}"
+    )
+    if abi != "arm64-v8a":
+        raise AssertionError(f"expected a real arm64-v8a Android system image, got primary ABI {abi}")
+    if machine not in {"aarch64", "arm64"}:
+        raise AssertionError(f"expected an ARM64 Android kernel/userspace, got uname -m {machine}")
+    if native_bridge not in {"", "0", "none"}:
+        raise AssertionError(f"ARM native bridge must not be active in the arm64-v8a AVD: {native_bridge}")
 
 
 def locate_android_tool(name: str) -> str:
