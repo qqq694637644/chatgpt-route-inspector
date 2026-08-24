@@ -56,7 +56,7 @@ After the extension has an Edge Add-ons ID / update URL, administrators can depl
 
 `dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses GitHub's native `ubuntu-24.04-arm` runner as infrastructure only; the Python test owns the Android environment. It downloads Google's official Linux-aarch64 Emulator build and Google APIs `arm64-v8a` system image, verifies the repository-provided system-image digest, creates the AVD, and starts it through the ARM64 software-virtualization path. It does not use Android's ARM-on-x86 native bridge and never falls back to x86_64 Android.
+The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses two infrastructure jobs. An x86_64 Ubuntu builder only shallow-syncs `emu-master-dev` and cross-builds the ARM64 Emulator bundle with Google's supported `--target linux_aarch64` path. The actual browser E2E runs only on GitHub's native `ubuntu-24.04-arm` runner. The ARM job verifies that the downloaded Emulator host executable is ARM64, then downloads the Google APIs API 35 `arm64-v8a` system image, verifies the repository-provided digest, creates the AVD, and boots it. It does not use Android's ARM-on-x86 native bridge and never falls back to x86_64 Android.
 
 The Python test requires Android itself to report `ro.product.cpu.abi=arm64-v8a`, `uname -m` as `aarch64`/`arm64`, no active native bridge, and the installed Edge package as `primaryCpuAbi=arm64-v8a`. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
 

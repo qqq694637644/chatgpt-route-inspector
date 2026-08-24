@@ -6,7 +6,7 @@ This directory contains the Python-driven Android E2E used by `.github/workflows
 
 The test runs a real **arm64-v8a Microsoft Edge Canary APK** inside a real **arm64-v8a Android system image**. Desktop Edge/Chromium is not used as a browser substitute.
 
-The GitHub-hosted runner is only infrastructure. The workflow selects native `ubuntu-24.04-arm`, then invokes `run_edge_android_e2e.py --managed-emulator`. Python downloads Google's Linux-aarch64 Emulator CI artifact and the Google APIs API 31 `arm64-v8a` system image, verifies the repository-provided system-image digest, writes the AVD configuration, starts/stops the emulator, and waits for boot completion. No x86_64 Android image or ARM-on-x86 native bridge is used. The test rejects the environment unless Android reports `ro.product.cpu.abi=arm64-v8a`, `uname -m` is `aarch64`/`arm64`, and no native bridge is active.
+The workflow uses two infrastructure jobs. An x86_64 Ubuntu builder runs `run_edge_android_e2e.py --build-emulator-bundle` to follow Google's supported cross-build path for a Linux-aarch64 Emulator: shallow-sync `emu-master-dev`, build `external/qemu` with `--target linux_aarch64`, verify the resulting executable is ARM64, and package only the runtime distribution. The E2E job then runs on native `ubuntu-24.04-arm`, downloads that ARM64 bundle, and invokes `run_edge_android_e2e.py --managed-emulator`. Python separately downloads the Google APIs API 35 `arm64-v8a` system image and verifies the repository-provided digest before creating the AVD. No x86_64 Android image or ARM-on-x86 native bridge is used as the test platform. The test rejects the environment unless Android reports `ro.product.cpu.abi=arm64-v8a`, `uname -m` is `aarch64`/`arm64`, and no native bridge is active.
 
 The workflow YAML is only environment orchestration. APK download and verification, CRX3 creation, Android UI automation, DevTools/CDP assertions, screenshots, and failure evidence collection are implemented in `run_edge_android_e2e.py`. Do not move test logic into inline Python, `python -c`, shell heredocs, or YAML-generated Python source.
 
@@ -54,3 +54,5 @@ python tests/android/run_edge_android_e2e.py --verify-edge-apk
 ```
 
 `python tests/android/run_edge_android_e2e.py --managed-emulator` owns the full emulator lifecycle on a native ARM64 Linux runner. Running the file without flags expects an already booted `arm64-v8a` Android emulator reachable through ADB with no ARM native bridge active.
+
+`python tests/android/run_edge_android_e2e.py --build-emulator-bundle` is infrastructure-only: it must run on x86_64 Linux and produces the ARM64 host Emulator bundle consumed by the ARM runner.

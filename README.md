@@ -56,7 +56,7 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 `dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
 
-GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 使用 GitHub 原生 `ubuntu-24.04-arm` runner 作为基础设施；Android 环境本身由 Python 测试脚本管理。脚本下载 Google 官方 Linux-aarch64 Emulator 构建和 Google APIs `arm64-v8a` system image、校验 system image 仓库摘要、创建 AVD，并用 ARM64 软件虚拟化路径启动。测试不走 Android 的 ARM-on-x86 native bridge，也不会回退到 x86_64 Android。
+GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 分成两个基础设施 job：x86_64 Ubuntu builder 只负责按 Google 官方流程 shallow-sync `emu-master-dev` 并以 `--target linux_aarch64` 交叉编译 ARM64 Emulator bundle；真正的浏览器 E2E 只在 GitHub 原生 `ubuntu-24.04-arm` runner 上执行。ARM job 会验证下载到的 Emulator 宿主二进制确为 ARM64，再下载 Google APIs API 35 `arm64-v8a` system image、校验仓库摘要、创建 AVD 并启动。测试不走 Android 的 ARM-on-x86 native bridge，也不会回退到 x86_64 Android。
 
 Python 测试会强制确认 Android 自身 `ro.product.cpu.abi=arm64-v8a`、`uname -m` 为 `aarch64/arm64`、native bridge 未启用，同时确认安装后的 Edge 包为 `primaryCpuAbi=arm64-v8a`。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
 

@@ -9,6 +9,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tarfile
 import time
 import urllib.request
 import urllib.parse
@@ -33,17 +34,17 @@ MICROSOFT_CERT_SHA256 = "01e1999710a82c2749b4d50c445dc85d670b6136089d0a766a73827
 STATE_KEY = "chatgptRouteInspectorStateV2"
 TEST_MODEL = "gpt-edge-android-ci"
 DEVTOOLS_PORT = 9222
-ANDROID_API = 31
+ANDROID_API = 35
 ANDROID_AVD_NAME = "edge-arm64"
 ANDROID_SERIAL = "emulator-5554"
 ANDROID_SYSIMG_PACKAGE = f"system-images;android-{ANDROID_API};google_apis;arm64-v8a"
 ANDROID_SYSIMG_REPOSITORY = "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-5.xml"
 ANDROID_SYSIMG_BASE = "https://dl.google.com/android/repository/sys-img/google_apis/"
-ANDROID_EMULATOR_BUILD_ID = "8632828"
-ANDROID_EMULATOR_URL = (
-    "https://ci.android.com/builds/submitted/8632828/emulator-linux_aarch64/latest/"
-    "sdk-repo-linux_aarch64-emulator-8632828.zip"
-)
+ANDROID_EMULATOR_MANIFEST = "https://android.googlesource.com/platform/manifest"
+ANDROID_EMULATOR_BRANCH = "emu-master-dev"
+ANDROID_EMULATOR_BUNDLE_NAME = "android-emulator-linux-aarch64.tar.gz"
+ANDROID_EMULATOR_BUNDLE = TEMP / "emulator-bundle" / ANDROID_EMULATOR_BUNDLE_NAME
+ANDROID_EMULATOR_BUILD_ARTIFACT = ROOT / "artifacts" / "android-emulator-build" / ANDROID_EMULATOR_BUNDLE_NAME
 
 
 def log(message: str) -> None:
@@ -57,6 +58,44 @@ def run(*args: str, check: bool = True, text: bool = True, timeout: int = 120) -
         stderr = result.stderr if text else "<binary>"
         raise RuntimeError(f"command failed ({result.returncode}): {' '.join(args)}\nstdout:\n{stdout}\nstderr:\n{stderr}")
     return result
+
+
+def run_logged(
+    *args: str,
+    cwd: Path,
+    log_path: Path,
+    timeout: int,
+    env: dict[str, str] | None = None,
+) -> None:
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    started = time.time()
+    log(f"running: {' '.join(args)}")
+    with log_path.open("w", encoding="utf-8") as output:
+        process = subprocess.Popen(
+            args,
+            cwd=cwd,
+            env=env,
+            stdout=output,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+    deadline = started + timeout
+    while process.poll() is None and time.time() < deadline:
+        time.sleep(30)
+        log(f"still running after {int(time.time() - started)}s: {args[0]}")
+    if process.poll() is None:
+        process.terminate()
+        try:
+            process.wait(timeout=20)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait(timeout=20)
+        tail = log_path.read_text(encoding="utf-8", errors="replace")[-16000:]
+        raise TimeoutError(f"command timed out after {timeout}s: {' '.join(args)}\n{tail}")
+    if process.returncode != 0:
+        tail = log_path.read_text(encoding="utf-8", errors="replace")[-16000:]
+        raise RuntimeError(f"command failed ({process.returncode}): {' '.join(args)}\n{tail}")
+    log(f"completed in {int(time.time() - started)}s: {args[0]}")
 
 
 def adb(*args: str, check: bool = True, text: bool = True, timeout: int = 120) -> subprocess.CompletedProcess[Any]:
@@ -127,32 +166,171 @@ def verify_digest(path: Path, algorithm: str, expected: str) -> None:
         raise AssertionError(f"{path.name} {algorithm} mismatch: {actual} != {expected}")
 
 
-def install_host_android_tools() -> None:
-    if shutil.which("adb") and shutil.which("apksigner"):
-        return
-    log("installing native ARM64 adb and Java apksigner from Ubuntu packages")
+def install_source_build_dependencies() -> None:
+    log("installing Linux-aarch64 Emulator cross-build dependencies")
     run("sudo", "apt-get", "update", timeout=600)
-    run("sudo", "apt-get", "install", "-y", "adb", "apksigner", timeout=600)
-    if not shutil.which("adb") or not shutil.which("apksigner"):
-        raise RuntimeError("adb/apksigner unavailable after package installation")
+    run(
+        "sudo",
+        "apt-get",
+        "install",
+        "-y",
+        "build-essential",
+        "ccache",
+        "crossbuild-essential-arm64",
+        "file",
+        "git",
+        "ninja-build",
+        "repo",
+        timeout=900,
+    )
+    required = ("file", "git", "ninja", "repo")
+    missing = [tool for tool in required if not shutil.which(tool)]
+    if missing:
+        raise RuntimeError(f"host build dependencies unavailable after package installation: {missing}")
+
+
+def install_runtime_dependencies() -> None:
+    log("installing native ARM64 Android runtime dependencies")
+    run("sudo", "apt-get", "update", timeout=600)
+    run("sudo", "apt-get", "install", "-y", "adb", "apksigner", "file", timeout=900)
+    required = ("adb", "apksigner", "file")
+    missing = [tool for tool in required if not shutil.which(tool)]
+    if missing:
+        raise RuntimeError(f"ARM64 runtime dependencies unavailable after package installation: {missing}")
+
+
+def disk_free_gib(path: Path) -> float:
+    target = path if path.exists() else path.parent
+    return shutil.disk_usage(target).free / (1024**3)
+
+
+def build_arm64_emulator_from_source() -> Path:
+    source_root = TEMP / "emulator-source"
+    qemu_root = source_root / "external" / "qemu"
+    distribution = qemu_root / "objs" / "distribution" / "emulator"
+    sdk_emulator = TEMP / "android-sdk" / "emulator"
+    cached = sdk_emulator / "emulator"
+    if cached.exists():
+        log("reusing previously built Linux-aarch64 Android Emulator")
+        return cached
+
+    source_root.mkdir(parents=True, exist_ok=True)
+    repo_log = TEMP / "logs" / "repo-sync.log"
+    build_log = TEMP / "logs" / "emulator-build.log"
+    if not (source_root / ".repo").exists():
+        run_logged(
+            "repo",
+            "init",
+            "-u",
+            ANDROID_EMULATOR_MANIFEST,
+            "-b",
+            ANDROID_EMULATOR_BRANCH,
+            "--depth=1",
+            "--partial-clone",
+            "--clone-filter=blob:limit=10M",
+            cwd=source_root,
+            log_path=repo_log,
+            timeout=600,
+        )
+    log(f"free disk before Emulator source sync: {disk_free_gib(TEMP):.1f} GiB")
+    run_logged(
+        "repo",
+        "sync",
+        "-c",
+        "-q",
+        "-j4",
+        "--no-tags",
+        "--optimized-fetch",
+        cwd=source_root,
+        log_path=repo_log,
+        timeout=2400,
+    )
+    build_script = qemu_root / "android" / "build" / "python" / "cmake.py"
+    if not build_script.exists():
+        raise RuntimeError("emu-master-dev sync did not produce external/qemu build scripts")
+
+    qemu_revision = run("git", "-C", str(qemu_root), "rev-parse", "HEAD", timeout=60).stdout.strip()
+    log(f"building Android Emulator {ANDROID_EMULATOR_BRANCH} revision {qemu_revision}")
+    log(f"free disk before Emulator build: {disk_free_gib(TEMP):.1f} GiB")
+    run_logged(
+        sys.executable,
+        "android/build/python/cmake.py",
+        "--noqtwebengine",
+        "--noshowprefixforinfo",
+        "--no-tests",
+        "--target",
+        "linux_aarch64",
+        cwd=qemu_root,
+        log_path=build_log,
+        timeout=3600,
+    )
+    emulator = distribution / "emulator"
+    if not emulator.exists():
+        tail = build_log.read_text(encoding="utf-8", errors="replace")[-16000:]
+        raise RuntimeError(f"Linux-aarch64 Emulator build produced no executable at {emulator}\n{tail}")
+    file_output = run("file", str(emulator), timeout=60).stdout.strip()
+    if "aarch64" not in file_output.lower() and "arm64" not in file_output.lower():
+        raise AssertionError(f"built Emulator is not an ARM64 Linux executable: {file_output}")
+    log(f"verified built Emulator binary: {file_output}")
+
+    sdk_emulator.parent.mkdir(parents=True, exist_ok=True)
+    if sdk_emulator.exists():
+        shutil.rmtree(sdk_emulator)
+    shutil.copytree(distribution, sdk_emulator, symlinks=True)
+    shutil.rmtree(source_root, ignore_errors=True)
+    log(f"released Emulator source/build tree; free disk: {disk_free_gib(TEMP):.1f} GiB")
+    return sdk_emulator / "emulator"
+
+
+def create_arm64_emulator_bundle() -> Path:
+    machine = platform.machine().lower()
+    if machine not in {"x86_64", "amd64"}:
+        raise RuntimeError(f"Linux-aarch64 Emulator cross-build requires an x86_64 Linux builder, got {machine}")
+    install_source_build_dependencies()
+    emulator = build_arm64_emulator_from_source()
+    emulator_dir = emulator.parent
+    ANDROID_EMULATOR_BUILD_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+    if ANDROID_EMULATOR_BUILD_ARTIFACT.exists():
+        ANDROID_EMULATOR_BUILD_ARTIFACT.unlink()
+    with tarfile.open(ANDROID_EMULATOR_BUILD_ARTIFACT, "w:gz") as archive:
+        archive.add(emulator_dir, arcname="emulator")
+    if ANDROID_EMULATOR_BUILD_ARTIFACT.stat().st_size == 0:
+        raise AssertionError("Linux-aarch64 Emulator bundle is empty")
+    log(
+        f"created Linux-aarch64 Emulator bundle {ANDROID_EMULATOR_BUILD_ARTIFACT} "
+        f"({ANDROID_EMULATOR_BUILD_ARTIFACT.stat().st_size / 1024 / 1024:.1f} MiB)"
+    )
+    return ANDROID_EMULATOR_BUILD_ARTIFACT
+
+
+def extract_arm64_emulator_bundle() -> Path:
+    if not ANDROID_EMULATOR_BUNDLE.exists():
+        raise RuntimeError(f"ARM64 Emulator bundle is missing: {ANDROID_EMULATOR_BUNDLE}")
+    sdk_root = TEMP / "android-sdk"
+    emulator_dir = sdk_root / "emulator"
+    if emulator_dir.exists():
+        shutil.rmtree(emulator_dir)
+    sdk_root.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(ANDROID_EMULATOR_BUNDLE, "r:gz") as archive:
+        archive.extractall(sdk_root, filter="data")
+    emulator = emulator_dir / "emulator"
+    if not emulator.exists():
+        raise RuntimeError(f"ARM64 Emulator bundle produced no executable at {emulator}")
+    emulator.chmod(emulator.stat().st_mode | 0o111)
+    file_output = run("file", str(emulator), timeout=60).stdout.strip()
+    if "aarch64" not in file_output.lower() and "arm64" not in file_output.lower():
+        raise AssertionError(f"downloaded Emulator bundle is not ARM64: {file_output}")
+    log(f"verified downloaded Emulator bundle: {file_output}")
+    return emulator
 
 
 def prepare_arm64_emulator() -> tuple[Path, Path]:
     machine = platform.machine().lower()
     if machine not in {"aarch64", "arm64"}:
         raise RuntimeError(f"managed ARM64 emulator requires a native ARM64 runner, got host {machine}")
-    install_host_android_tools()
+    install_runtime_dependencies()
     sdk_root = TEMP / "android-sdk"
-    emulator_zip = TEMP / f"sdk-repo-linux_aarch64-emulator-{ANDROID_EMULATOR_BUILD_ID}.zip"
-    download_file(ANDROID_EMULATOR_URL, emulator_zip, timeout=1800)
-    emulator_dir = sdk_root / "emulator"
-    if not (emulator_dir / "emulator").exists():
-        sdk_root.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(emulator_zip) as archive:
-            archive.extractall(sdk_root)
-    emulator = emulator_dir / "emulator"
-    if not emulator.exists():
-        raise RuntimeError(f"Google ARM64 emulator archive did not produce {emulator}")
+    emulator = extract_arm64_emulator_bundle()
     emulator.chmod(emulator.stat().st_mode | 0o111)
 
     image_url, image_algorithm, image_checksum = system_image_archive()
@@ -205,7 +383,7 @@ def prepare_arm64_emulator() -> tuple[Path, Path]:
         ),
         encoding="utf-8",
     )
-    log(f"prepared Google ARM64 emulator build {ANDROID_EMULATOR_BUILD_ID} and API {ANDROID_API} arm64-v8a image")
+    log(f"prepared source-built Linux-aarch64 Emulator and API {ANDROID_API} arm64-v8a image")
     return emulator, avd_home
 
 
@@ -767,6 +945,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--verify-edge-apk", action="store_true")
+    parser.add_argument("--build-emulator-bundle", action="store_true")
     parser.add_argument("--managed-emulator", action="store_true")
     args = parser.parse_args()
     try:
@@ -774,6 +953,8 @@ if __name__ == "__main__":
             self_check()
         elif args.verify_edge_apk:
             verify_edge_apk()
+        elif args.build_emulator_bundle:
+            create_arm64_emulator_bundle()
         else:
             main(args.managed_emulator)
     except Exception as error:
