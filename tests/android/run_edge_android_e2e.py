@@ -183,14 +183,17 @@ def bounds_center(bounds: str) -> tuple[int, int]:
     return (left + right) // 2, (top + bottom) // 2
 
 
-def find_ui(patterns: tuple[str, ...]) -> ET.Element | None:
-    root = dump_ui()
+def find_ui_in_tree(root: ET.Element, patterns: tuple[str, ...]) -> ET.Element | None:
     lowered = tuple(pattern.lower() for pattern in patterns)
     for node in root.iter("node"):
         label = node_label(node).lower()
         if label and any(pattern in label for pattern in lowered):
             return node
     return None
+
+
+def find_ui(patterns: tuple[str, ...]) -> ET.Element | None:
+    return find_ui_in_tree(dump_ui(), patterns)
 
 
 def tap_node(node: ET.Element, repeat: int = 1) -> None:
@@ -220,18 +223,79 @@ def scroll_down() -> None:
 
 
 def finish_first_run() -> None:
-    adb("shell", "monkey", "-p", EDGE_PACKAGE, "-c", "android.intent.category.LAUNCHER", "1")
+    log("launching Edge directly without the Android launcher")
+    adb(
+        "shell",
+        "am",
+        "start",
+        "-W",
+        "-a",
+        "android.intent.action.MAIN",
+        "-c",
+        "android.intent.category.LAUNCHER",
+        "-p",
+        EDGE_PACKAGE,
+        timeout=60,
+    )
     time.sleep(3)
-    for _ in range(12):
-        if find_ui(("search or enter web address", "address and search bar", "new tab")) is not None:
+    ready_patterns = (
+        "search or enter web address",
+        "search or type web address",
+        "search or type url",
+        "address and search bar",
+        "address bar",
+        "new tab",
+    )
+    first_run_patterns = (
+        "accept and continue",
+        "accept & continue",
+        "get started",
+        "continue without signing in",
+        "continue without an account",
+        "not now",
+        "maybe later",
+        "no thanks",
+        "skip",
+        "confirm",
+        "continue",
+    )
+    for _ in range(20):
+        root = dump_ui()
+        if find_ui_in_tree(root, ready_patterns) is not None:
             return
-        if tap_ui(("accept and continue", "accept & continue", "get started"), timeout=1, required=False):
-            continue
-        if tap_ui(("continue without signing in", "continue without an account", "skip"), timeout=1, required=False):
-            continue
-        if tap_ui(("not now", "maybe later", "no thanks"), timeout=1, required=False):
-            continue
-        if tap_ui(("confirm", "continue"), timeout=1, required=False):
+
+        anr_title = find_ui_in_tree(root, ("isn't responding", "is not responding"))
+        if anr_title is not None:
+            title = node_label(anr_title)
+            if "edge" in title.lower():
+                screenshot("edge-anr")
+                raise AssertionError(f"Edge ANR during first run: {title}")
+            close_app = find_ui_in_tree(root, ("close app",))
+            if close_app is not None:
+                log(f"dismissing unrelated system ANR: {title}")
+                tap_node(close_app)
+                time.sleep(1)
+                adb(
+                    "shell",
+                    "am",
+                    "start",
+                    "-W",
+                    "-a",
+                    "android.intent.action.MAIN",
+                    "-c",
+                    "android.intent.category.LAUNCHER",
+                    "-p",
+                    EDGE_PACKAGE,
+                    timeout=60,
+                )
+                time.sleep(2)
+                continue
+
+        first_run = find_ui_in_tree(root, first_run_patterns)
+        if first_run is not None:
+            log(f"first-run action: {node_label(first_run)}")
+            tap_node(first_run)
+            time.sleep(1)
             continue
         time.sleep(1)
     screenshot("first-run-stuck")
