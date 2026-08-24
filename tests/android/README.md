@@ -1,14 +1,14 @@
-# Edge Android arm64-v8a translation E2E
+# Edge Android x86_64 E2E
 
 This directory contains the Python-driven Android E2E used by `.github/workflows/edge-android-e2e.yml`.
 
 ## Test boundary
 
-The test runs a real **arm64-v8a Microsoft Edge Canary APK** inside the standard GitHub Android CI shape: **Ubuntu 24.04 + KVM + Android API 35 x86_64 emulator** with Android's advertised `arm64-v8a` translation support. Desktop Edge/Chromium is not used as a browser substitute.
+The test runs Microsoft Edge Canary inside the standard GitHub Android CI shape: **Ubuntu 24.04 + KVM + Android API 35 x86_64 emulator**. Desktop Edge/Chromium is not used as a browser substitute.
 
-The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python then rejects the environment unless Android reports API 35, primary ABI `x86_64`, kernel machine `x86_64`, and `arm64-v8a` in `ro.product.cpu.abilist`. The Edge APK itself must still be the ARM64 variant and the installed package must report `primaryCpuAbi=arm64-v8a`.
+The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python rejects the environment unless Android reports API 35, primary ABI `x86_64`, and kernel machine `x86_64`. The Edge APK must contain `x86_64` native libraries, and the installed package must report `primaryCpuAbi=x86_64`.
 
-This is intentionally the standard GitHub Android CI approach. A previous real run showed Edge Canary can still crash with `SIGSEGV` under Android's ARM translation; that is a known product/runtime risk, not hidden by a custom emulator fallback. The Python test checks logcat during first launch and fails immediately with an explicit ARM-translation `SIGSEGV` error, while preserving logcat/UI evidence.
+This is intentionally the standard GitHub Android CI approach. A previous real run installed an ARM64-only Edge APK and forced Android ARM translation, which crashed with `SIGSEGV`. This test now rejects ARM-only Edge APKs before installation instead of relying on translation.
 
 The workflow YAML is only environment orchestration. APK download and verification, CRX3 creation, Android UI automation, DevTools/CDP assertions, screenshots, and failure evidence collection are implemented in `run_edge_android_e2e.py`. Do not move test logic into inline Python, `python -c`, shell heredocs, or YAML-generated Python source.
 
@@ -29,9 +29,9 @@ Downloaded APKs and the ephemeral CRX signing key live under `.tmp/edge-android-
 
 The emulator test verifies:
 
-1. Android reports API 35 on an x86_64 KVM AVD and advertises `arm64-v8a` translation support.
-2. The pinned Microsoft-signed Edge Canary APK is installed.
-3. Android reports the installed Edge package as `primaryCpuAbi=arm64-v8a`.
+1. Android reports API 35 on an x86_64 KVM AVD.
+2. The pinned Microsoft-signed Edge Canary APK contains `x86_64` native libraries.
+3. Android reports the installed Edge package as `primaryCpuAbi=x86_64`.
 4. The current `dist/edge-android` build is packaged as CRX3 and side-loaded through Edge Android Developer Options.
 5. Edge exposes the extension service worker with the CRX's expected extension ID.
 6. Opening `https://chatgpt.com/` injects the Route Inspector overlay.

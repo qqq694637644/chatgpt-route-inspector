@@ -1,4 +1,4 @@
-name: Edge Android ARM translation E2E
+name: Edge Android x86_64 E2E
 
 on:
   pull_request:
@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   edge-android-e2e:
-    name: Edge Canary arm64-v8a / API 35 x86_64
+    name: Edge Canary native / API 35 x86_64
     runs-on: ubuntu-24.04
     timeout-minutes: 30
 
@@ -50,7 +50,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Run arm64 Edge on Android API 35 translation
+      - name: Run native Edge on Android API 35 x86_64
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -76,7 +76,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: edge-android-arm-translation-e2e-${{ github.run_id }}
+          name: edge-android-x86-64-e2e-${{ github.run_id }}
           path: artifacts/edge-android-e2e
           if-no-files-found: warn
           retention-days: 14

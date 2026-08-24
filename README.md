@@ -52,15 +52,15 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 获得 Edge Add-ons 的扩展 ID / 更新地址后，可由管理员通过 Edge Android 的 `ExtensionInstallForcelist` / `ExtensionSettings` 策略进行托管部署。
 
-### Android ARM translation E2E 与真机验证
+### Android x86_64 E2E 与真机验证
 
 `dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
 
-GitHub Actions 的 `Edge Android ARM translation E2E` workflow 使用标准 Android CI 结构：`ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`。AVD 生命周期由 `reactivecircus/android-emulator-runner` 管理；Python 只负责测试逻辑，并要求 Android 明确在 ABI 列表中声明 `arm64-v8a` translation 支持。
+GitHub Actions 的 `Edge Android x86_64 E2E` workflow 使用标准 Android CI 结构：`ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`。AVD 生命周期由 `reactivecircus/android-emulator-runner` 管理；Python 只负责测试逻辑，并要求 Android 自身为 API 35 / x86_64。
 
-Python 测试会确认模拟器为 API 35 / x86_64，并且 `ro.product.cpu.abilist` 包含 `arm64-v8a`；下载的 Edge APK 必须只有 ARM64 native libraries，安装后的 Edge 包必须为 `primaryCpuAbi=arm64-v8a`。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
+Python 测试会确认模拟器为 API 35 / x86_64；下载的 Edge APK 必须包含 `x86_64` native libraries，安装后的 Edge 包必须为 `primaryCpuAbi=x86_64`。如果下载源只提供 ARM64 Edge APK，测试会在安装前失败并说明不能在标准 x86_64 AVD 中使用 ARM-only 包。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
 
-此前真实 CI 已观察到 Edge Canary 在这条 ARM translation 路径下发生 `SIGSEGV`。本项目仍按此标准 GitHub Android CI 方案测试，但不会把该崩溃兜底或隐藏；发生时 workflow 必须失败并上传 logcat/UI evidence。
+此前真实 CI 已观察到 ARM64-only Edge Canary 在 x86_64 AVD 的 ARM translation 路径下发生 `SIGSEGV`。因此当前测试不再安装 ARM-only Edge 包；如果没有可用的 x86_64 Edge APK，workflow 必须早失败，而不是退回 translation。
 
 未发布扩展的自动化侧载使用 Edge Canary；这不改变生产基线仍为 Edge Android 151+。真实手机/平板仍应执行手工验收，尤其是商店分发、触控尺寸和下载行为。
 

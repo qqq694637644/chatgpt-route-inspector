@@ -25,6 +25,7 @@ TEMP = ROOT / ".tmp" / "edge-android-e2e"
 EDGE_PACKAGE = "com.microsoft.emmx.canary"
 EDGE_REQUEST_VERSION = "153.0.4201.0"
 EDGE_MIN_MAJOR = 151
+EDGE_REQUIRED_NATIVE_ABI = "x86_64"
 MICROSOFT_CERT_SHA256 = "01e1999710a82c2749b4d50c445dc85d670b6136089d0a766a73827c82a1eac9"
 STATE_KEY = "chatgptRouteInspectorStateV2"
 TEST_MODEL = "gpt-edge-android-ci"
@@ -62,14 +63,13 @@ def locate_android_tool(name: str) -> str:
     raise RuntimeError(f"Android SDK tool not found: {name}")
 
 
-def ensure_arm_translation_android() -> None:
+def ensure_standard_x86_android() -> None:
     api = adb("shell", "getprop", "ro.build.version.sdk").stdout.strip()
     release = adb("shell", "getprop", "ro.build.version.release").stdout.strip()
     abi = adb("shell", "getprop", "ro.product.cpu.abi").stdout.strip()
     abi_list = adb("shell", "getprop", "ro.product.cpu.abilist").stdout.strip()
     native_bridge = adb("shell", "getprop", "ro.dalvik.vm.native.bridge").stdout.strip()
     machine = adb("shell", "uname", "-m").stdout.strip()
-    supported_abis = {value.strip() for value in abi_list.split(",") if value.strip()}
     log(
         f"device Android {release}, API {api}, primary ABI {abi}, ABI list {abi_list}, "
         f"kernel machine {machine}, native bridge {native_bridge or '<none>'}"
@@ -78,9 +78,7 @@ def ensure_arm_translation_android() -> None:
         raise AssertionError(f"expected Android API {ANDROID_API}, got {api}")
     if abi != "x86_64" or machine not in {"x86_64", "amd64"}:
         raise AssertionError(f"expected the standard x86_64 KVM AVD, got ABI {abi} / uname {machine}")
-    if "arm64-v8a" not in supported_abis:
-        raise AssertionError(f"API {ANDROID_API} AVD does not advertise arm64-v8a translation support: {abi_list}")
-    log("verified standard API 35 x86_64 AVD with advertised arm64-v8a translation support")
+    log("verified standard API 35 x86_64 KVM AVD")
 
 
 def sha256_file(path: Path) -> str:
@@ -140,14 +138,16 @@ def download_and_verify_edge() -> tuple[Path, str]:
             for name in archive.namelist()
             if name.startswith("lib/") and len(name.split("/", 2)) >= 3
         }
-    if "arm64-v8a" not in native_abis:
-        raise AssertionError(f"downloaded Edge APK has no arm64-v8a native libraries: {sorted(native_abis)}")
-    forbidden_abis = native_abis.intersection({"x86", "x86_64", "armeabi-v7a", "armeabi"})
-    if forbidden_abis:
-        raise AssertionError(f"Edge APK must be the ARM64 variant, found extra native ABIs: {sorted(forbidden_abis)}")
+    if EDGE_REQUIRED_NATIVE_ABI not in native_abis:
+        raise AssertionError(
+            "downloaded Edge APK is not native-compatible with the standard x86_64 Android CI AVD; "
+            f"required {EDGE_REQUIRED_NATIVE_ABI}, found native ABIs {sorted(native_abis)}. "
+            "Do not install the ARM64-only Edge package here because it forces Android ARM translation and "
+            "has already crashed with SIGSEGV in CI."
+        )
 
     log(
-        f"verified Edge Canary {actual_version}, arm64-v8a APK {actual_hash[:16]}… "
+        f"verified Edge Canary {actual_version}, {sorted(native_abis)} APK {actual_hash[:16]}… "
         f"and Microsoft certificate {cert_sha256[:16]}…"
     )
     return apk, actual_version
@@ -172,14 +172,14 @@ def build_crx() -> tuple[Path, str]:
 
 
 def install_edge(apk: Path, expected_version: str) -> None:
-    log("installing arm64-v8a Edge Canary into Android emulator")
+    log("installing native-compatible Edge Canary into Android emulator")
     adb("install", "-r", str(apk), timeout=240)
     package_dump = adb("shell", "dumpsys", "package", EDGE_PACKAGE).stdout
     if f"versionName={expected_version}" not in package_dump:
         raise AssertionError(f"installed Edge version does not match APK manifest version {expected_version}")
-    if "primaryCpuAbi=arm64-v8a" not in package_dump:
-        raise AssertionError("installed Edge Canary is not using arm64-v8a as its primary package ABI")
-    log("verified installed Edge primaryCpuAbi=arm64-v8a")
+    if f"primaryCpuAbi={EDGE_REQUIRED_NATIVE_ABI}" not in package_dump:
+        raise AssertionError(f"installed Edge Canary is not using {EDGE_REQUIRED_NATIVE_ABI} as its primary package ABI")
+    log(f"verified installed Edge primaryCpuAbi={EDGE_REQUIRED_NATIVE_ABI}")
 
 
 def screenshot(name: str) -> None:
@@ -246,7 +246,7 @@ def scroll_down() -> None:
     time.sleep(0.7)
 
 
-def edge_translation_sigsegv() -> str | None:
+def edge_sigsegv() -> str | None:
     result = adb("logcat", "-d", "-t", "1200", check=False, timeout=30)
     if result.returncode != 0:
         return None
@@ -306,13 +306,10 @@ def finish_first_run() -> None:
         "continue",
     )
     for _ in range(20):
-        crash = edge_translation_sigsegv()
+        crash = edge_sigsegv()
         if crash is not None:
-            screenshot("edge-arm-translation-sigsegv")
-            raise AssertionError(
-                "Edge Canary crashed with SIGSEGV while executing the arm64 build through "
-                f"Android API 35 x86_64 translation: {crash}"
-            )
+            screenshot("edge-sigsegv")
+            raise AssertionError(f"Edge Canary crashed with SIGSEGV before first-run UI: {crash}")
         root = dump_ui()
         if find_ui_in_tree(root, ready_patterns) is not None:
             return
@@ -554,7 +551,7 @@ def run_browser_assertions(expected_crx_id: str) -> None:
 
 def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    ensure_arm_translation_android()
+    ensure_standard_x86_android()
     apk, edge_version = download_and_verify_edge()
     crx, crx_id = build_crx()
     install_edge(apk, edge_version)
@@ -562,7 +559,7 @@ def main() -> None:
     enable_edge_developer_options()
     sideload_extension(crx)
     run_browser_assertions(crx_id)
-    log("PASS: arm64-v8a Edge Android E2E on API 35 x86_64 translation")
+    log("PASS: native Edge Android E2E on API 35 x86_64")
 
 
 def self_check() -> None:
