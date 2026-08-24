@@ -6,22 +6,22 @@ This directory contains the Python-driven Android E2E used by `.github/workflows
 
 The test runs Microsoft Edge Canary inside the standard GitHub Android CI shape: **Ubuntu 24.04 + KVM + Android API 35 x86_64 emulator**. Desktop Edge/Chromium is not used as a browser substitute.
 
-The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python rejects the environment unless Android reports API 35, primary ABI `x86_64`, and kernel machine `x86_64`. The Edge APK must contain `x86_64` native libraries, and the installed package must report `primaryCpuAbi=x86_64`.
+The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python rejects the environment unless Android reports API 35, primary ABI `x86_64`, and kernel machine `x86_64`. It then tries Edge Stable, Beta, Dev, and Canary APK candidates from public APK sources. The selected Edge APK must contain `x86_64` native libraries, and the installed package must report `primaryCpuAbi=x86_64`.
 
-This is intentionally the standard GitHub Android CI approach. A previous real run installed an ARM64-only Edge APK and forced Android ARM translation, which crashed with `SIGSEGV`. This test now rejects ARM-only Edge APKs before installation instead of relying on translation.
+This is intentionally the standard GitHub Android CI approach. A previous real run installed an ARM64-only Edge APK and forced Android ARM translation, which crashed with `SIGSEGV`. This test now rejects ARM-only Edge APKs before installation instead of relying on translation. If all public Edge channel candidates are ARM-only, the job fails early with the ABI list for each rejected package.
 
 The workflow YAML is only environment orchestration. APK download and verification, CRX3 creation, Android UI automation, DevTools/CDP assertions, screenshots, and failure evidence collection are implemented in `run_edge_android_e2e.py`. Do not move test logic into inline Python, `python -c`, shell heredocs, or YAML-generated Python source.
 
 ## Trust pins
 
-The test downloads a pinned Edge Canary APK through `justapk` using the APKPure source, then refuses to install it unless all of these match the constants in `run_edge_android_e2e.py`:
+The test downloads Edge Stable/Beta/Dev/Canary APK candidates through `justapk` using the APKPure source, then refuses to install a candidate unless all of these match the constants in `run_edge_android_e2e.py`:
 
-- package: `com.microsoft.emmx.canary`;
+- package: one of the configured Microsoft Edge channel packages;
 - version: APK manifest major version must be 151 or newer;
 - signer SHA-256: pinned Microsoft Edge Android signing certificate;
-- native ABI: `arm64-v8a`.
+- native ABI: `x86_64`.
 
-The requested mirror version is only a download hint. The test does not trust the mirror filename or metadata: it reads the actual `versionName` from the downloaded APK manifest, requires Edge major 151 or newer, and then requires the installed package to report that exact same version. The APK file SHA-256 is recorded in the job log for evidence but is not used as the trust root because mirror-side packaging can change the file digest. The Microsoft signer certificate, package name, manifest version, and `arm64-v8a` ABI are mandatory. A re-signed APK or a different package/unsupported version/ABI fails before or during installation.
+The requested mirror version is only a download hint where one is configured. The test does not trust the mirror filename or metadata: it reads the actual `versionName` from the downloaded APK manifest, requires Edge major 151 or newer, and then requires the installed package to report that exact same version. The APK file SHA-256 is recorded in the job log for evidence but is not used as the trust root because mirror-side packaging can change the file digest. The Microsoft signer certificate, package name, manifest version, and `x86_64` ABI are mandatory. A re-signed APK or a different package/unsupported version/ABI fails before or during installation.
 
 Downloaded APKs and the ephemeral CRX signing key live under `.tmp/edge-android-e2e` and are never uploaded as CI evidence. The evidence artifact contains only test outputs such as the generated CRX, screenshots, UI dumps, and logcat.
 

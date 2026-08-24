@@ -58,11 +58,11 @@ After the extension has an Edge Add-ons ID / update URL, administrators can depl
 
 The GitHub Actions `Edge Android x86_64 E2E` workflow uses the standard Android CI shape: `ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`. `reactivecircus/android-emulator-runner` owns the AVD lifecycle, while Python owns the test logic and requires Android itself to be API 35 / x86_64.
 
-The Python test requires the downloaded Edge APK to contain `x86_64` native libraries, and the installed Edge package must report `primaryCpuAbi=x86_64`. If the download source provides only an ARM64 Edge APK, the test fails before installation instead of relying on ARM translation. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+The Python test confirms the emulator is API 35 / x86_64, then tries public Edge Stable, Beta, Dev, and Canary APK candidates in order. The selected Edge APK must contain `x86_64` native libraries, and the installed Edge package must report `primaryCpuAbi=x86_64`. If all download sources provide only ARM64/ARMv7 Edge APKs, the test fails before installation and lists each channel's ABI instead of relying on ARM translation. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
 
 A previous real CI run observed ARM64-only Edge Canary crashing with `SIGSEGV` on Android's x86_64 ARM-translation path. The current test no longer installs ARM-only Edge packages; if no x86_64 Edge APK is available, the workflow fails early instead of falling back to translation.
 
-Automated sideloading of an unpublished extension uses Edge Canary; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
+Automated sideloading of an unpublished extension uses the first available x86_64 Edge channel; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
 
 ## Build from source
 

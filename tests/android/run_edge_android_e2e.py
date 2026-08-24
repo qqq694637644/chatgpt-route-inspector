@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from dataclasses import dataclass
 import hashlib
 import json
 import os
@@ -22,8 +23,6 @@ from justapk import APKDownloader
 ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "artifacts" / "edge-android-e2e"
 TEMP = ROOT / ".tmp" / "edge-android-e2e"
-EDGE_PACKAGE = "com.microsoft.emmx.canary"
-EDGE_REQUEST_VERSION = "153.0.4201.0"
 EDGE_MIN_MAJOR = 151
 EDGE_REQUIRED_NATIVE_ABI = "x86_64"
 MICROSOFT_CERT_SHA256 = "01e1999710a82c2749b4d50c445dc85d670b6136089d0a766a73827c82a1eac9"
@@ -32,6 +31,23 @@ TEST_MODEL = "gpt-edge-android-ci"
 DEVTOOLS_PORT = 9222
 ANDROID_API = 35
 ANDROID_SERIAL = "emulator-5554"
+
+
+@dataclass(frozen=True)
+class EdgeCandidate:
+    label: str
+    package: str
+    source: str = "apkpure"
+    version: str | None = None
+
+
+EDGE_CANDIDATES = (
+    EdgeCandidate("Edge Stable", "com.microsoft.emmx"),
+    EdgeCandidate("Edge Beta", "com.microsoft.emmx.beta"),
+    EdgeCandidate("Edge Dev", "com.microsoft.emmx.dev"),
+    EdgeCandidate("Edge Canary", "com.microsoft.emmx.canary", version="153.0.4201.0"),
+)
+EDGE_PACKAGE = EDGE_CANDIDATES[-1].package
 
 
 def log(message: str) -> None:
@@ -96,18 +112,32 @@ def extract_certificate_sha256(cert_output: str) -> str:
     return match.group(1).lower()
 
 
-def download_and_verify_edge() -> tuple[Path, str]:
+def candidate_cache_path(candidate: EdgeCandidate) -> Path:
+    token = re.sub(r"[^a-zA-Z0-9_.-]+", "-", candidate.version or "latest")
+    return TEMP / "apk" / f"{candidate.package}-{candidate.source}-{token}.apk"
+
+
+def download_edge_candidate(candidate: EdgeCandidate) -> Path:
     apk_dir = TEMP / "apk"
     apk_dir.mkdir(parents=True, exist_ok=True)
-    cached_apk = apk_dir / f"{EDGE_PACKAGE}-{EDGE_REQUEST_VERSION}.apk"
+    cached_apk = candidate_cache_path(candidate)
     if cached_apk.exists():
-        log(f"reusing cached Edge Canary APK {cached_apk.name}")
-        apk = cached_apk
-    else:
-        downloader = APKDownloader()
-        log(f"requesting Edge Canary {EDGE_REQUEST_VERSION} from APKPure")
-        result = downloader.download(EDGE_PACKAGE, output_dir=apk_dir, source="apkpure", version=EDGE_REQUEST_VERSION)
-        apk = Path(result.path)
+        log(f"reusing cached {candidate.label} APK {cached_apk.name}")
+        return cached_apk
+
+    downloader = APKDownloader()
+    requested = candidate.version or "latest"
+    log(f"requesting {candidate.label} {requested} from {candidate.source}")
+    result = downloader.download(candidate.package, output_dir=apk_dir, source=candidate.source, version=candidate.version)
+    apk = Path(result.path)
+    if apk.suffix.lower() != ".apk":
+        raise AssertionError(f"expected a single APK, got {apk.name}")
+    if apk.resolve() != cached_apk.resolve():
+        shutil.copy2(apk, cached_apk)
+    return cached_apk
+
+
+def verify_edge_candidate(candidate: EdgeCandidate, apk: Path) -> tuple[str, set[str], str]:
     if apk.suffix.lower() != ".apk":
         raise AssertionError(f"expected a single APK, got {apk.name}")
 
@@ -121,8 +151,8 @@ def download_and_verify_edge() -> tuple[Path, str]:
 
     apk_info = APK(str(apk))
     package_name = apk_info.get_package()
-    if package_name != EDGE_PACKAGE:
-        raise AssertionError("downloaded APK package is not Microsoft Edge Canary")
+    if package_name != candidate.package:
+        raise AssertionError(f"downloaded APK package {package_name} does not match requested {candidate.package}")
     actual_version = apk_info.get_androidversion_name()
     if not actual_version:
         raise AssertionError("downloaded Edge APK has no Android manifest versionName")
@@ -140,17 +170,39 @@ def download_and_verify_edge() -> tuple[Path, str]:
         }
     if EDGE_REQUIRED_NATIVE_ABI not in native_abis:
         raise AssertionError(
-            "downloaded Edge APK is not native-compatible with the standard x86_64 Android CI AVD; "
+            f"{candidate.label} APK is not native-compatible with the standard x86_64 Android CI AVD; "
             f"required {EDGE_REQUIRED_NATIVE_ABI}, found native ABIs {sorted(native_abis)}. "
             "Do not install the ARM64-only Edge package here because it forces Android ARM translation and "
             "has already crashed with SIGSEGV in CI."
         )
 
-    log(
-        f"verified Edge Canary {actual_version}, {sorted(native_abis)} APK {actual_hash[:16]}… "
-        f"and Microsoft certificate {cert_sha256[:16]}…"
+    return actual_version, native_abis, actual_hash
+
+
+def download_and_verify_edge() -> tuple[Path, str, EdgeCandidate]:
+    failures: list[str] = []
+    for candidate in EDGE_CANDIDATES:
+        try:
+            apk = download_edge_candidate(candidate)
+            actual_version, native_abis, actual_hash = verify_edge_candidate(candidate, apk)
+        except Exception as error:
+            message = f"{candidate.label} ({candidate.package}): {error}"
+            log(f"candidate rejected: {message}")
+            failures.append(message)
+            continue
+
+        global EDGE_PACKAGE
+        EDGE_PACKAGE = candidate.package
+        log(
+            f"selected {candidate.label} {actual_version}, {sorted(native_abis)} APK {actual_hash[:16]}… "
+            f"and Microsoft certificate {MICROSOFT_CERT_SHA256[:16]}…"
+        )
+        return apk, actual_version, candidate
+
+    raise AssertionError(
+        "no Microsoft Edge Android x86_64 APK candidate was available for the standard GitHub API 35 x86_64 AVD.\n"
+        + "\n".join(f"- {failure}" for failure in failures)
     )
-    return apk, actual_version
 
 
 def build_crx() -> tuple[Path, str]:
@@ -171,14 +223,14 @@ def build_crx() -> tuple[Path, str]:
     return crx, header.crx_id
 
 
-def install_edge(apk: Path, expected_version: str) -> None:
-    log("installing native-compatible Edge Canary into Android emulator")
+def install_edge(apk: Path, expected_version: str, candidate: EdgeCandidate) -> None:
+    log(f"installing native-compatible {candidate.label} into Android emulator")
     adb("install", "-r", str(apk), timeout=240)
     package_dump = adb("shell", "dumpsys", "package", EDGE_PACKAGE).stdout
     if f"versionName={expected_version}" not in package_dump:
         raise AssertionError(f"installed Edge version does not match APK manifest version {expected_version}")
     if f"primaryCpuAbi={EDGE_REQUIRED_NATIVE_ABI}" not in package_dump:
-        raise AssertionError(f"installed Edge Canary is not using {EDGE_REQUIRED_NATIVE_ABI} as its primary package ABI")
+        raise AssertionError(f"installed {candidate.label} is not using {EDGE_REQUIRED_NATIVE_ABI} as its primary package ABI")
     log(f"verified installed Edge primaryCpuAbi={EDGE_REQUIRED_NATIVE_ABI}")
 
 
@@ -309,7 +361,7 @@ def finish_first_run() -> None:
         crash = edge_sigsegv()
         if crash is not None:
             screenshot("edge-sigsegv")
-            raise AssertionError(f"Edge Canary crashed with SIGSEGV before first-run UI: {crash}")
+            raise AssertionError(f"Edge crashed with SIGSEGV before first-run UI: {crash}")
         root = dump_ui()
         if find_ui_in_tree(root, ready_patterns) is not None:
             return
@@ -353,7 +405,7 @@ def finish_first_run() -> None:
 
 
 def enable_edge_developer_options() -> None:
-    log("enabling Edge Canary developer options through the Android UI")
+    log("enabling Edge developer options through the Android UI")
     tap_ui(("settings and more", "more options", "menu"))
     tap_ui(("settings",))
     for _ in range(6):
@@ -552,9 +604,9 @@ def run_browser_assertions(expected_crx_id: str) -> None:
 def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     ensure_standard_x86_android()
-    apk, edge_version = download_and_verify_edge()
+    apk, edge_version, candidate = download_and_verify_edge()
     crx, crx_id = build_crx()
-    install_edge(apk, edge_version)
+    install_edge(apk, edge_version, candidate)
     finish_first_run()
     enable_edge_developer_options()
     sideload_extension(crx)
@@ -576,8 +628,8 @@ def self_check() -> None:
 
 
 def verify_edge_apk() -> None:
-    apk, edge_version = download_and_verify_edge()
-    log(f"PASS: Edge Android APK verified ({edge_version}, {apk.name})")
+    apk, edge_version, candidate = download_and_verify_edge()
+    log(f"PASS: {candidate.label} Android APK verified ({edge_version}, {apk.name})")
 
 
 if __name__ == "__main__":
