@@ -8,7 +8,7 @@ The test runs a real **arm64-v8a Microsoft Edge Canary APK** inside the standard
 
 The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python then rejects the environment unless Android reports API 35, primary ABI `x86_64`, kernel machine `x86_64`, and `arm64-v8a` in `ro.product.cpu.abilist`. The Edge APK itself must still be the ARM64 variant and the installed package must report `primaryCpuAbi=arm64-v8a`.
 
-This is intentionally the standard GitHub Android CI approach. A previous real run showed Edge Canary can still crash with `SIGSEGV` under Android's ARM translation; that is a known product/runtime risk, not hidden by a custom emulator fallback. If it happens again, the job must fail and upload logcat/UI evidence.
+This is intentionally the standard GitHub Android CI approach. A previous real run showed Edge Canary can still crash with `SIGSEGV` under Android's ARM translation; that is a known product/runtime risk, not hidden by a custom emulator fallback. The Python test checks logcat during first launch and fails immediately with an explicit ARM-translation `SIGSEGV` error, while preserving logcat/UI evidence.
 
 The workflow YAML is only environment orchestration. APK download and verification, CRX3 creation, Android UI automation, DevTools/CDP assertions, screenshots, and failure evidence collection are implemented in `run_edge_android_e2e.py`. Do not move test logic into inline Python, `python -c`, shell heredocs, or YAML-generated Python source.
 

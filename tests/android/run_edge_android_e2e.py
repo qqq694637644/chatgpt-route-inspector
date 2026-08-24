@@ -246,6 +246,28 @@ def scroll_down() -> None:
     time.sleep(0.7)
 
 
+def edge_translation_sigsegv() -> str | None:
+    result = adb("logcat", "-d", "-t", "1200", check=False, timeout=30)
+    if result.returncode != 0:
+        return None
+    lines = result.stdout.splitlines()
+    for index, line in enumerate(lines):
+        if "Fatal signal 11 (SIGSEGV)" not in line:
+            continue
+        if EDGE_PACKAGE not in line and "oft.emmx.canary" not in line:
+            continue
+        excerpt = lines[index : min(index + 90, len(lines))]
+        libchrome = next((item.strip() for item in excerpt if "/lib/arm64/libchrome.so" in item), None)
+        guest = next((item.strip() for item in excerpt if "Guest architecture: 'arm64'" in item), None)
+        details = [line.strip()]
+        if guest:
+            details.append(guest)
+        if libchrome:
+            details.append(libchrome)
+        return " | ".join(details)
+    return None
+
+
 def finish_first_run() -> None:
     log("launching Edge directly without the Android launcher")
     adb(
@@ -284,6 +306,13 @@ def finish_first_run() -> None:
         "continue",
     )
     for _ in range(20):
+        crash = edge_translation_sigsegv()
+        if crash is not None:
+            screenshot("edge-arm-translation-sigsegv")
+            raise AssertionError(
+                "Edge Canary crashed with SIGSEGV while executing the arm64 build through "
+                f"Android API 35 x86_64 translation: {crash}"
+            )
         root = dump_ui()
         if find_ui_in_tree(root, ready_patterns) is not None:
             return
