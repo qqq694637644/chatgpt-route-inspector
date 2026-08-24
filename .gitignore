@@ -1,10 +1,12 @@
 node_modules/
+.venv/
 dist/
 release/
 coverage/
 playwright-report/
 test-results/
 output/playwright/
+artifacts/edge-android-e2e/
 .tmp/
 DEVELOPMENT_LOG.md
 *.log

@@ -2,7 +2,7 @@ import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**', 'test-results/**', 'playwright-report/**', 'output/playwright/**'] },
+  { ignores: ['dist/**', 'release/**', 'coverage/**', 'node_modules/**', '.venv/**', 'test-results/**', 'playwright-report/**', 'output/playwright/**'] },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {

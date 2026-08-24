@@ -52,11 +52,13 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 获得 Edge Add-ons 的扩展 ID / 更新地址后，可由管理员通过 Edge Android 的 `ExtensionInstallForcelist` / `ExtensionSettings` 策略进行托管部署。
 
-### 真机开发与验证
+### Android arm64-v8a 模拟器 E2E 与真机验证
 
-`dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。本项目的 Android 真机验收以实际 Microsoft Edge for Android 运行结果为准，部署可使用 Edge Add-ons 分发或受管理 Android 设备的扩展策略。
+`dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
 
-自动化环境没有 Android 真机时，只能完成构建产物约束检查，不能宣称 Android E2E 已通过。
+GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 会启动 **Android `arm64-v8a`** 模拟器，在模拟器内安装固定版本的 Microsoft Edge Canary，再通过 Edge Android 的 CRX 开发者安装入口加载当前构建。当前 workflow 选择 API 35 system image，但测试契约只要求 Android ABI 为 `arm64-v8a`，不绑定宿主架构或某个 Android 大版本。测试脚本会验证 ABI、Microsoft APK 签名证书、实际安装包版本、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
+
+未发布扩展的自动化侧载使用 Edge Canary；这不改变生产基线仍为 Edge Android 151+。真实手机/平板仍应执行手工验收，尤其是商店分发、触控尺寸和下载行为。
 
 ## 从源码构建
 
@@ -128,7 +130,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-仓库不再把 Windows / 桌面 Chromium Playwright 当作 Edge Android E2E。真正的 E2E 必须在 Android 真机上的 Microsoft Edge 中完成；本仓库只提供可自动执行的类型、lint、单元/集成、构建和产物约束验证，以及真机验收清单。
+Android E2E 由 GitHub Actions 在 `arm64-v8a` 模拟器内执行，入口为 `tests/android/run_edge_android_e2e.py`。workflow YAML 只负责环境编排；APK 获取与校验、Android UI 自动化、CRX 安装和浏览器断言全部由 Python 文件实现，不使用 `python -c`、heredoc 或 YAML 内联 Python。真实手机/平板的补充验收仍见手工核验指南。
 
 ## 免责声明
 

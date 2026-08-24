@@ -52,11 +52,13 @@ This repository no longer provides a Chrome Web Store installation path.
 
 After the extension has an Edge Add-ons ID / update URL, administrators can deploy it to managed Android devices through Edge's `ExtensionInstallForcelist` / `ExtensionSettings` policies.
 
-### Device development and validation
+### Android arm64-v8a emulator E2E and device validation
 
-`dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.** Android acceptance is based on the extension actually running in Microsoft Edge for Android, deployed through Edge Add-ons or managed Android extension policy.
+`dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-When the automation environment has no Android device, it can verify the build artifact contract only and must not claim Android E2E passed.
+The GitHub Actions `Edge Android arm64-v8a E2E` workflow boots an **Android `arm64-v8a`** emulator, installs a pinned Microsoft Edge Canary build inside that emulator, and loads the current build through Edge Android's CRX developer-install surface. The current workflow selects an API 35 system image, but the test contract requires only the Android `arm64-v8a` ABI and is not tied to a host architecture or a specific Android release. The Python test verifies the ABI, Microsoft APK signing certificate, installed package version, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+
+Automated sideloading of an unpublished extension uses Edge Canary; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
 
 ## Build from source
 
@@ -128,7 +130,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-The repository no longer treats Windows / desktop Chromium Playwright as Edge Android E2E. Real E2E must run in Microsoft Edge on a physical Android device. The repository provides automated type, lint, unit/integration, build, and artifact-contract checks plus a device acceptance checklist.
+Android E2E runs in an `arm64-v8a` emulator in GitHub Actions through `tests/android/run_edge_android_e2e.py`. The workflow YAML only orchestrates the environment; APK acquisition/verification, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
 
 ## Disclaimer
 
