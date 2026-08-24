@@ -22,7 +22,8 @@ ROOT = Path(__file__).resolve().parents[2]
 ARTIFACTS = ROOT / "artifacts" / "edge-android-e2e"
 TEMP = ROOT / ".tmp" / "edge-android-e2e"
 EDGE_PACKAGE = "com.microsoft.emmx.canary"
-EDGE_VERSION = "153.0.4201.0"
+EDGE_REQUEST_VERSION = "153.0.4201.0"
+EDGE_MIN_MAJOR = 151
 MICROSOFT_CERT_SHA256 = "01e1999710a82c2749b4d50c445dc85d670b6136089d0a766a73827c82a1eac9"
 STATE_KEY = "chatgptRouteInspectorStateV2"
 TEST_MODEL = "gpt-edge-android-ci"
@@ -84,17 +85,17 @@ def extract_certificate_sha256(cert_output: str) -> str:
     return match.group(1).lower()
 
 
-def download_and_verify_edge() -> Path:
+def download_and_verify_edge() -> tuple[Path, str]:
     apk_dir = TEMP / "apk"
     apk_dir.mkdir(parents=True, exist_ok=True)
-    cached_apk = apk_dir / f"{EDGE_PACKAGE}-{EDGE_VERSION}.apk"
+    cached_apk = apk_dir / f"{EDGE_PACKAGE}-{EDGE_REQUEST_VERSION}.apk"
     if cached_apk.exists():
         log(f"reusing cached Edge Canary APK {cached_apk.name}")
         apk = cached_apk
     else:
         downloader = APKDownloader()
-        log(f"downloading Edge Canary {EDGE_VERSION} from APKPure")
-        result = downloader.download(EDGE_PACKAGE, output_dir=apk_dir, source="apkpure", version=EDGE_VERSION)
+        log(f"requesting Edge Canary {EDGE_REQUEST_VERSION} from APKPure")
+        result = downloader.download(EDGE_PACKAGE, output_dir=apk_dir, source="apkpure", version=EDGE_REQUEST_VERSION)
         apk = Path(result.path)
     if apk.suffix.lower() != ".apk":
         raise AssertionError(f"expected a single APK, got {apk.name}")
@@ -111,13 +112,21 @@ def download_and_verify_edge() -> Path:
     badging = run(aapt, "dump", "badging", str(apk)).stdout
     if f"name='{EDGE_PACKAGE}'" not in badging:
         raise AssertionError("downloaded APK package is not Microsoft Edge Canary")
-    if f"versionName='{EDGE_VERSION}'" not in badging:
-        raise AssertionError("downloaded Edge version does not match the pinned test version")
+    version_match = re.search(r"versionName='([^']+)'", badging)
+    if not version_match:
+        raise AssertionError(f"downloaded Edge APK has no versionName in aapt badging\n{badging[:2000]}")
+    actual_version = version_match.group(1)
+    major_match = re.match(r"(\d+)", actual_version)
+    if not major_match or int(major_match.group(1)) < EDGE_MIN_MAJOR:
+        raise AssertionError(f"downloaded Edge version {actual_version} is below supported major {EDGE_MIN_MAJOR}")
     if "arm64-v8a" not in badging:
         raise AssertionError("downloaded Edge APK is not arm64-v8a")
 
-    log(f"verified Edge APK {actual_hash[:16]}… and Microsoft certificate {cert_sha256[:16]}…")
-    return apk
+    log(
+        f"verified Edge Canary {actual_version}, arm64-v8a APK {actual_hash[:16]}… "
+        f"and Microsoft certificate {cert_sha256[:16]}…"
+    )
+    return apk, actual_version
 
 
 def build_crx() -> tuple[Path, str]:
@@ -138,12 +147,12 @@ def build_crx() -> tuple[Path, str]:
     return crx, header.crx_id
 
 
-def install_edge(apk: Path) -> None:
+def install_edge(apk: Path, expected_version: str) -> None:
     log("installing arm64-v8a Edge Canary into Android emulator")
     adb("install", "-r", str(apk), timeout=240)
     package_dump = adb("shell", "dumpsys", "package", EDGE_PACKAGE).stdout
-    if f"versionName={EDGE_VERSION}" not in package_dump:
-        raise AssertionError("Edge Canary did not install at the pinned version")
+    if f"versionName={expected_version}" not in package_dump:
+        raise AssertionError(f"installed Edge version does not match APK manifest version {expected_version}")
     if "primaryCpuAbi=arm64-v8a" not in package_dump:
         raise AssertionError("installed Edge Canary is not using arm64-v8a as its primary package ABI")
     log("verified installed Edge primaryCpuAbi=arm64-v8a")
@@ -248,7 +257,7 @@ def enable_edge_developer_options() -> None:
         root = dump_ui()
         for node in root.iter("node"):
             label = node_label(node)
-            if EDGE_VERSION in label or re.search(r"\b15[1-9]\.\d+\.\d+\.\d+\b", label):
+            if re.search(r"\b(?:15[1-9]|1[6-9]\d|[2-9]\d\d)\.\d+\.\d+\.\d+\b", label):
                 version_node = node
                 break
         if version_node is not None:
@@ -429,9 +438,9 @@ def run_browser_assertions(expected_crx_id: str) -> None:
 def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
     ensure_arm64_android()
-    apk = download_and_verify_edge()
+    apk, edge_version = download_and_verify_edge()
     crx, crx_id = build_crx()
-    install_edge(apk)
+    install_edge(apk, edge_version)
     finish_first_run()
     enable_edge_developer_options()
     sideload_extension(crx)
@@ -453,8 +462,8 @@ def self_check() -> None:
 
 
 def verify_edge_apk() -> None:
-    apk = download_and_verify_edge()
-    log(f"PASS: pinned Edge Android APK verified ({apk.name})")
+    apk, edge_version = download_and_verify_edge()
+    log(f"PASS: Edge Android APK verified ({edge_version}, {apk.name})")
 
 
 if __name__ == "__main__":

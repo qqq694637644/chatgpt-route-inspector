@@ -15,11 +15,11 @@ The workflow YAML is only environment orchestration. APK download and verificati
 The test downloads a pinned Edge Canary APK through `justapk` using the APKPure source, then refuses to install it unless all of these match the constants in `run_edge_android_e2e.py`:
 
 - package: `com.microsoft.emmx.canary`;
-- version: pinned Edge Canary version;
+- version: APK manifest major version must be 151 or newer;
 - signer SHA-256: pinned Microsoft Edge Android signing certificate;
 - native ABI: `arm64-v8a`.
 
-The APK file SHA-256 is recorded in the job log for evidence but is not used as the trust root because mirror-side packaging can change the file digest. The Microsoft signer certificate, package name, pinned version, and `arm64-v8a` ABI are mandatory. A re-signed APK or a different package/version/ABI fails before installation.
+The requested mirror version is only a download hint. The test does not trust the mirror filename or metadata: it reads the actual `versionName` from the downloaded APK manifest, requires Edge major 151 or newer, and then requires the installed package to report that exact same version. The APK file SHA-256 is recorded in the job log for evidence but is not used as the trust root because mirror-side packaging can change the file digest. The Microsoft signer certificate, package name, manifest version, and `arm64-v8a` ABI are mandatory. A re-signed APK or a different package/unsupported version/ABI fails before or during installation.
 
 Downloaded APKs and the ephemeral CRX signing key live under `.tmp/edge-android-e2e` and are never uploaded as CI evidence. The evidence artifact contains only test outputs such as the generated CRX, screenshots, UI dumps, and logcat.
 
