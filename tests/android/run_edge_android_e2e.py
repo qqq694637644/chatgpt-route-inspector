@@ -50,6 +50,18 @@ def adb(*args: str, check: bool = True, text: bool = True, timeout: int = 120) -
     return run("adb", "-s", os.environ.get("ANDROID_SERIAL", ANDROID_SERIAL), *args, check=check, text=text, timeout=timeout)
 
 
+def locate_android_tool(name: str) -> str:
+    direct = shutil.which(name)
+    if direct:
+        return direct
+    sdk_root = Path(os.environ.get("ANDROID_SDK_ROOT") or os.environ.get("ANDROID_HOME") or "")
+    if sdk_root:
+        candidates = sorted((sdk_root / "build-tools").glob(f"*/{name}"), reverse=True)
+        if candidates:
+            return str(candidates[0])
+    raise RuntimeError(f"Android SDK tool not found: {name}")
+
+
 def ensure_arm_translation_android() -> None:
     api = adb("shell", "getprop", "ro.build.version.sdk").stdout.strip()
     release = adb("shell", "getprop", "ro.build.version.release").stdout.strip()
@@ -103,9 +115,7 @@ def download_and_verify_edge() -> tuple[Path, str]:
 
     actual_hash = sha256_file(apk)
 
-    apksigner = shutil.which("apksigner")
-    if not apksigner:
-        raise RuntimeError("apksigner is required to cryptographically verify the Edge APK")
+    apksigner = locate_android_tool("apksigner")
     cert_output = run(apksigner, "verify", "--print-certs", str(apk)).stdout
     cert_sha256 = extract_certificate_sha256(cert_output)
     if cert_sha256 != MICROSOFT_CERT_SHA256:
