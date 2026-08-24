@@ -4,18 +4,13 @@ import argparse
 import hashlib
 import json
 import os
-import platform
 import re
 import shutil
 import subprocess
-import sys
-import tarfile
 import time
 import urllib.request
-import urllib.parse
 import xml.etree.ElementTree as ET
 import zipfile
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -35,16 +30,7 @@ STATE_KEY = "chatgptRouteInspectorStateV2"
 TEST_MODEL = "gpt-edge-android-ci"
 DEVTOOLS_PORT = 9222
 ANDROID_API = 35
-ANDROID_AVD_NAME = "edge-arm64"
 ANDROID_SERIAL = "emulator-5554"
-ANDROID_SYSIMG_PACKAGE = f"system-images;android-{ANDROID_API};google_apis;arm64-v8a"
-ANDROID_SYSIMG_REPOSITORY = "https://dl.google.com/android/repository/sys-img/google_apis/sys-img2-5.xml"
-ANDROID_SYSIMG_BASE = "https://dl.google.com/android/repository/sys-img/google_apis/"
-ANDROID_EMULATOR_MANIFEST = "https://android.googlesource.com/platform/manifest"
-ANDROID_EMULATOR_BRANCH = "emu-master-dev"
-ANDROID_EMULATOR_BUNDLE_NAME = "android-emulator-linux-aarch64.tar.gz"
-ANDROID_EMULATOR_BUNDLE = TEMP / "emulator-bundle" / ANDROID_EMULATOR_BUNDLE_NAME
-ANDROID_EMULATOR_BUILD_ARTIFACT = ROOT / "artifacts" / "android-emulator-build" / ANDROID_EMULATOR_BUNDLE_NAME
 
 
 def log(message: str) -> None:
@@ -60,408 +46,29 @@ def run(*args: str, check: bool = True, text: bool = True, timeout: int = 120) -
     return result
 
 
-def run_logged(
-    *args: str,
-    cwd: Path,
-    log_path: Path,
-    timeout: int,
-    env: dict[str, str] | None = None,
-) -> None:
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-    started = time.time()
-    log(f"running: {' '.join(args)}")
-    with log_path.open("w", encoding="utf-8") as output:
-        process = subprocess.Popen(
-            args,
-            cwd=cwd,
-            env=env,
-            stdout=output,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-    deadline = started + timeout
-    while process.poll() is None and time.time() < deadline:
-        time.sleep(30)
-        log(f"still running after {int(time.time() - started)}s: {args[0]}")
-    if process.poll() is None:
-        process.terminate()
-        try:
-            process.wait(timeout=20)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=20)
-        tail = log_path.read_text(encoding="utf-8", errors="replace")[-16000:]
-        raise TimeoutError(f"command timed out after {timeout}s: {' '.join(args)}\n{tail}")
-    if process.returncode != 0:
-        tail = log_path.read_text(encoding="utf-8", errors="replace")[-16000:]
-        raise RuntimeError(f"command failed ({process.returncode}): {' '.join(args)}\n{tail}")
-    log(f"completed in {int(time.time() - started)}s: {args[0]}")
-
-
 def adb(*args: str, check: bool = True, text: bool = True, timeout: int = 120) -> subprocess.CompletedProcess[Any]:
     return run("adb", "-s", os.environ.get("ANDROID_SERIAL", ANDROID_SERIAL), *args, check=check, text=text, timeout=timeout)
 
 
-def download_file(url: str, destination: Path, timeout: int = 900) -> Path:
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    if destination.exists() and destination.stat().st_size > 0:
-        log(f"reusing cached download {destination.name} ({destination.stat().st_size / 1024 / 1024:.1f} MiB)")
-        return destination
-    request = urllib.request.Request(url, headers={"User-Agent": "chatgpt-route-inspector-edge-android-e2e/2.0"})
-    started = time.time()
-    transferred = 0
-    with urllib.request.urlopen(request, timeout=timeout) as response, destination.open("wb") as output:
-        total = int(response.headers.get("Content-Length", "0") or "0")
-        while True:
-            chunk = response.read(1024 * 1024)
-            if not chunk:
-                break
-            output.write(chunk)
-            transferred += len(chunk)
-            if transferred % (128 * 1024 * 1024) < len(chunk):
-                suffix = f"/{total / 1024 / 1024:.0f} MiB" if total else " MiB"
-                log(f"downloaded {transferred / 1024 / 1024:.0f}{suffix}: {destination.name}")
-    log(f"downloaded {destination.name}: {transferred / 1024 / 1024:.1f} MiB in {time.time() - started:.1f}s")
-    return destination
-
-
-def local_name(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def system_image_archive() -> tuple[str, str, str]:
-    request = urllib.request.Request(ANDROID_SYSIMG_REPOSITORY, headers={"User-Agent": "edge-android-e2e/2.0"})
-    with urllib.request.urlopen(request, timeout=60) as response:
-        root = ET.fromstring(response.read())
-    package: ET.Element | None = None
-    for element in root.iter():
-        if local_name(element.tag) == "remotePackage" and element.attrib.get("path") == ANDROID_SYSIMG_PACKAGE:
-            package = element
-            break
-    if package is None:
-        raise RuntimeError(f"Google repository does not contain {ANDROID_SYSIMG_PACKAGE}")
-
-    for archive in package.iter():
-        if local_name(archive.tag) != "archive":
-            continue
-        complete = next((node for node in archive if local_name(node.tag) == "complete"), None)
-        if complete is None:
-            continue
-        url_node = next((node for node in complete if local_name(node.tag) == "url"), None)
-        checksum_node = next((node for node in complete if local_name(node.tag) == "checksum"), None)
-        if url_node is None or not url_node.text or checksum_node is None or not checksum_node.text:
-            continue
-        algorithm = checksum_node.attrib.get("type", "sha1").lower().replace("-", "")
-        return urllib.parse.urljoin(ANDROID_SYSIMG_BASE, url_node.text.strip()), algorithm, checksum_node.text.strip().lower()
-    raise RuntimeError(f"Google repository has no complete archive for {ANDROID_SYSIMG_PACKAGE}")
-
-
-def verify_digest(path: Path, algorithm: str, expected: str) -> None:
-    digest = hashlib.new(algorithm)
-    with path.open("rb") as source:
-        for chunk in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(chunk)
-    actual = digest.hexdigest().lower()
-    if actual != expected.lower():
-        raise AssertionError(f"{path.name} {algorithm} mismatch: {actual} != {expected}")
-
-
-def install_source_build_dependencies() -> None:
-    log("installing Linux-aarch64 Emulator cross-build dependencies")
-    run("sudo", "apt-get", "update", timeout=600)
-    run(
-        "sudo",
-        "apt-get",
-        "install",
-        "-y",
-        "build-essential",
-        "ccache",
-        "crossbuild-essential-arm64",
-        "file",
-        "git",
-        "ninja-build",
-        "repo",
-        timeout=900,
-    )
-    required = ("file", "git", "ninja", "repo")
-    missing = [tool for tool in required if not shutil.which(tool)]
-    if missing:
-        raise RuntimeError(f"host build dependencies unavailable after package installation: {missing}")
-
-
-def install_runtime_dependencies() -> None:
-    log("installing native ARM64 Android runtime dependencies")
-    run("sudo", "apt-get", "update", timeout=600)
-    run("sudo", "apt-get", "install", "-y", "adb", "apksigner", "file", timeout=900)
-    required = ("adb", "apksigner", "file")
-    missing = [tool for tool in required if not shutil.which(tool)]
-    if missing:
-        raise RuntimeError(f"ARM64 runtime dependencies unavailable after package installation: {missing}")
-
-
-def disk_free_gib(path: Path) -> float:
-    target = path if path.exists() else path.parent
-    return shutil.disk_usage(target).free / (1024**3)
-
-
-def build_arm64_emulator_from_source() -> Path:
-    source_root = TEMP / "emulator-source"
-    qemu_root = source_root / "external" / "qemu"
-    distribution = qemu_root / "objs" / "distribution" / "emulator"
-    sdk_emulator = TEMP / "android-sdk" / "emulator"
-    cached = sdk_emulator / "emulator"
-    if cached.exists():
-        log("reusing previously built Linux-aarch64 Android Emulator")
-        return cached
-
-    source_root.mkdir(parents=True, exist_ok=True)
-    repo_log = TEMP / "logs" / "repo-sync.log"
-    build_log = TEMP / "logs" / "emulator-build.log"
-    if not (source_root / ".repo").exists():
-        run_logged(
-            "repo",
-            "init",
-            "-u",
-            ANDROID_EMULATOR_MANIFEST,
-            "-b",
-            ANDROID_EMULATOR_BRANCH,
-            "--depth=1",
-            "--partial-clone",
-            "--clone-filter=blob:limit=10M",
-            cwd=source_root,
-            log_path=repo_log,
-            timeout=600,
-        )
-    log(f"free disk before Emulator source sync: {disk_free_gib(TEMP):.1f} GiB")
-    run_logged(
-        "repo",
-        "sync",
-        "-c",
-        "-q",
-        "-j4",
-        "--no-tags",
-        "--optimized-fetch",
-        cwd=source_root,
-        log_path=repo_log,
-        timeout=2400,
-    )
-    build_script = qemu_root / "android" / "build" / "python" / "cmake.py"
-    if not build_script.exists():
-        raise RuntimeError("emu-master-dev sync did not produce external/qemu build scripts")
-
-    qemu_revision = run("git", "-C", str(qemu_root), "rev-parse", "HEAD", timeout=60).stdout.strip()
-    log(f"building Android Emulator {ANDROID_EMULATOR_BRANCH} revision {qemu_revision}")
-    log(f"free disk before Emulator build: {disk_free_gib(TEMP):.1f} GiB")
-    run_logged(
-        sys.executable,
-        "android/build/python/cmake.py",
-        "--noqtwebengine",
-        "--noshowprefixforinfo",
-        "--no-tests",
-        "--target",
-        "linux_aarch64",
-        cwd=qemu_root,
-        log_path=build_log,
-        timeout=3600,
-    )
-    emulator = distribution / "emulator"
-    if not emulator.exists():
-        tail = build_log.read_text(encoding="utf-8", errors="replace")[-16000:]
-        raise RuntimeError(f"Linux-aarch64 Emulator build produced no executable at {emulator}\n{tail}")
-    file_output = run("file", str(emulator), timeout=60).stdout.strip()
-    if "aarch64" not in file_output.lower() and "arm64" not in file_output.lower():
-        raise AssertionError(f"built Emulator is not an ARM64 Linux executable: {file_output}")
-    log(f"verified built Emulator binary: {file_output}")
-
-    sdk_emulator.parent.mkdir(parents=True, exist_ok=True)
-    if sdk_emulator.exists():
-        shutil.rmtree(sdk_emulator)
-    shutil.copytree(distribution, sdk_emulator, symlinks=True)
-    shutil.rmtree(source_root, ignore_errors=True)
-    log(f"released Emulator source/build tree; free disk: {disk_free_gib(TEMP):.1f} GiB")
-    return sdk_emulator / "emulator"
-
-
-def create_arm64_emulator_bundle() -> Path:
-    machine = platform.machine().lower()
-    if machine not in {"x86_64", "amd64"}:
-        raise RuntimeError(f"Linux-aarch64 Emulator cross-build requires an x86_64 Linux builder, got {machine}")
-    install_source_build_dependencies()
-    emulator = build_arm64_emulator_from_source()
-    emulator_dir = emulator.parent
-    ANDROID_EMULATOR_BUILD_ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
-    if ANDROID_EMULATOR_BUILD_ARTIFACT.exists():
-        ANDROID_EMULATOR_BUILD_ARTIFACT.unlink()
-    with tarfile.open(ANDROID_EMULATOR_BUILD_ARTIFACT, "w:gz") as archive:
-        archive.add(emulator_dir, arcname="emulator")
-    if ANDROID_EMULATOR_BUILD_ARTIFACT.stat().st_size == 0:
-        raise AssertionError("Linux-aarch64 Emulator bundle is empty")
-    log(
-        f"created Linux-aarch64 Emulator bundle {ANDROID_EMULATOR_BUILD_ARTIFACT} "
-        f"({ANDROID_EMULATOR_BUILD_ARTIFACT.stat().st_size / 1024 / 1024:.1f} MiB)"
-    )
-    return ANDROID_EMULATOR_BUILD_ARTIFACT
-
-
-def extract_arm64_emulator_bundle() -> Path:
-    if not ANDROID_EMULATOR_BUNDLE.exists():
-        raise RuntimeError(f"ARM64 Emulator bundle is missing: {ANDROID_EMULATOR_BUNDLE}")
-    sdk_root = TEMP / "android-sdk"
-    emulator_dir = sdk_root / "emulator"
-    if emulator_dir.exists():
-        shutil.rmtree(emulator_dir)
-    sdk_root.mkdir(parents=True, exist_ok=True)
-    with tarfile.open(ANDROID_EMULATOR_BUNDLE, "r:gz") as archive:
-        archive.extractall(sdk_root, filter="data")
-    emulator = emulator_dir / "emulator"
-    if not emulator.exists():
-        raise RuntimeError(f"ARM64 Emulator bundle produced no executable at {emulator}")
-    emulator.chmod(emulator.stat().st_mode | 0o111)
-    file_output = run("file", str(emulator), timeout=60).stdout.strip()
-    if "aarch64" not in file_output.lower() and "arm64" not in file_output.lower():
-        raise AssertionError(f"downloaded Emulator bundle is not ARM64: {file_output}")
-    log(f"verified downloaded Emulator bundle: {file_output}")
-    return emulator
-
-
-def prepare_arm64_emulator() -> tuple[Path, Path]:
-    machine = platform.machine().lower()
-    if machine not in {"aarch64", "arm64"}:
-        raise RuntimeError(f"managed ARM64 emulator requires a native ARM64 runner, got host {machine}")
-    install_runtime_dependencies()
-    sdk_root = TEMP / "android-sdk"
-    emulator = extract_arm64_emulator_bundle()
-    emulator.chmod(emulator.stat().st_mode | 0o111)
-
-    image_url, image_algorithm, image_checksum = system_image_archive()
-    image_zip = TEMP / f"google-apis-api-{ANDROID_API}-arm64-v8a.zip"
-    download_file(image_url, image_zip, timeout=1800)
-    verify_digest(image_zip, image_algorithm, image_checksum)
-    image_parent = sdk_root / "system-images" / f"android-{ANDROID_API}" / "google_apis"
-    image_dir = image_parent / "arm64-v8a"
-    if not (image_dir / "system.img").exists():
-        image_parent.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(image_zip) as archive:
-            archive.extractall(image_parent)
-    if not (image_dir / "system.img").exists():
-        raise RuntimeError(f"Google ARM64 system image did not produce {image_dir / 'system.img'}")
-
-    avd_home = TEMP / "avd"
-    avd_dir = avd_home / f"{ANDROID_AVD_NAME}.avd"
-    avd_home.mkdir(parents=True, exist_ok=True)
-    avd_dir.mkdir(parents=True, exist_ok=True)
-    (avd_home / f"{ANDROID_AVD_NAME}.ini").write_text(
-        f"avd.ini.encoding=UTF-8\npath={avd_dir}\ntarget=android-{ANDROID_API}\n",
-        encoding="utf-8",
-    )
-    (avd_dir / "config.ini").write_text(
-        "\n".join(
-            [
-                "AvdId=edge-arm64",
-                "abi.type=arm64-v8a",
-                "avd.ini.displayname=Edge Android ARM64 CI",
-                "avd.ini.encoding=UTF-8",
-                "disk.dataPartition.size=6G",
-                "fastboot.forceColdBoot=yes",
-                "fastboot.forceFastBoot=no",
-                "hw.cpu.arch=arm64",
-                "hw.cpu.ncore=2",
-                "hw.gpu.enabled=yes",
-                "hw.gpu.mode=swiftshader_indirect",
-                "hw.keyboard=yes",
-                "hw.lcd.density=420",
-                "hw.lcd.height=1920",
-                "hw.lcd.width=1080",
-                "hw.ramSize=3072",
-                f"image.sysdir.1={image_dir}/",
-                "skin.dynamic=yes",
-                "tag.display=Google APIs",
-                "tag.id=google_apis",
-                "vm.heapSize=512",
-                "",
-            ]
-        ),
-        encoding="utf-8",
-    )
-    log(f"prepared source-built Linux-aarch64 Emulator and API {ANDROID_API} arm64-v8a image")
-    return emulator, avd_home
-
-
-@contextmanager
-def managed_arm64_emulator():
-    emulator, avd_home = prepare_arm64_emulator()
-    ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    emulator_log = ARTIFACTS / "emulator.log"
-    env = os.environ.copy()
-    env["ANDROID_AVD_HOME"] = str(avd_home)
-    env["ANDROID_HOME"] = str(TEMP / "android-sdk")
-    env["ANDROID_SDK_ROOT"] = str(TEMP / "android-sdk")
-    env["ANDROID_SERIAL"] = ANDROID_SERIAL
-    command = [
-        str(emulator),
-        f"@{ANDROID_AVD_NAME}",
-        "-port",
-        "5554",
-        "-no-window",
-        "-noaudio",
-        "-no-boot-anim",
-        "-no-snapshot",
-        "-wipe-data",
-        "-skip-adb-auth",
-        "-gpu",
-        "swiftshader_indirect",
-        "-accel",
-        "off",
-        "-qemu",
-        "-accel",
-        "tcg",
-    ]
-    log("starting official Linux-aarch64 Android Emulator with TCG")
-    with emulator_log.open("w", encoding="utf-8") as output:
-        process = subprocess.Popen(command, stdout=output, stderr=subprocess.STDOUT, env=env, text=True)
-    os.environ.update({"ANDROID_AVD_HOME": str(avd_home), "ANDROID_HOME": env["ANDROID_HOME"], "ANDROID_SDK_ROOT": env["ANDROID_SDK_ROOT"], "ANDROID_SERIAL": ANDROID_SERIAL})
-    deadline = time.time() + 1800
-    try:
-        while time.time() < deadline:
-            if process.poll() is not None:
-                tail = emulator_log.read_text(encoding="utf-8", errors="replace")[-12000:]
-                raise RuntimeError(f"ARM64 Android Emulator exited before boot ({process.returncode})\n{tail}")
-            result = adb("shell", "getprop", "sys.boot_completed", check=False, timeout=15)
-            if result.returncode == 0 and result.stdout.strip() == "1":
-                adb("shell", "input", "keyevent", "82", check=False)
-                log("ARM64 Android Emulator boot completed")
-                yield
-                return
-            time.sleep(5)
-        tail = emulator_log.read_text(encoding="utf-8", errors="replace")[-12000:]
-        raise TimeoutError(f"ARM64 Android Emulator did not boot within 1800 seconds\n{tail}")
-    finally:
-        adb("emu", "kill", check=False, timeout=30)
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=20)
-            except subprocess.TimeoutExpired:
-                process.kill()
-
-
-def ensure_arm64_android() -> None:
+def ensure_arm_translation_android() -> None:
     api = adb("shell", "getprop", "ro.build.version.sdk").stdout.strip()
     release = adb("shell", "getprop", "ro.build.version.release").stdout.strip()
     abi = adb("shell", "getprop", "ro.product.cpu.abi").stdout.strip()
     abi_list = adb("shell", "getprop", "ro.product.cpu.abilist").stdout.strip()
     native_bridge = adb("shell", "getprop", "ro.dalvik.vm.native.bridge").stdout.strip()
     machine = adb("shell", "uname", "-m").stdout.strip()
+    supported_abis = {value.strip() for value in abi_list.split(",") if value.strip()}
     log(
         f"device Android {release}, API {api}, primary ABI {abi}, ABI list {abi_list}, "
         f"kernel machine {machine}, native bridge {native_bridge or '<none>'}"
     )
-    if abi != "arm64-v8a":
-        raise AssertionError(f"expected a real arm64-v8a Android system image, got primary ABI {abi}")
-    if machine not in {"aarch64", "arm64"}:
-        raise AssertionError(f"expected an ARM64 Android kernel/userspace, got uname -m {machine}")
-    if native_bridge not in {"", "0", "none"}:
-        raise AssertionError(f"ARM native bridge must not be active in the arm64-v8a AVD: {native_bridge}")
+    if api != str(ANDROID_API):
+        raise AssertionError(f"expected Android API {ANDROID_API}, got {api}")
+    if abi != "x86_64" or machine not in {"x86_64", "amd64"}:
+        raise AssertionError(f"expected the standard x86_64 KVM AVD, got ABI {abi} / uname {machine}")
+    if "arm64-v8a" not in supported_abis:
+        raise AssertionError(f"API {ANDROID_API} AVD does not advertise arm64-v8a translation support: {abi_list}")
+    log("verified standard API 35 x86_64 AVD with advertised arm64-v8a translation support")
 
 
 def sha256_file(path: Path) -> str:
@@ -906,13 +513,9 @@ def run_browser_assertions(expected_crx_id: str) -> None:
     screenshot("chatgpt-e2e-passed")
 
 
-def main(manage_emulator: bool = False) -> None:
+def main() -> None:
     ARTIFACTS.mkdir(parents=True, exist_ok=True)
-    if manage_emulator:
-        with managed_arm64_emulator():
-            main(False)
-        return
-    ensure_arm64_android()
+    ensure_arm_translation_android()
     apk, edge_version = download_and_verify_edge()
     crx, crx_id = build_crx()
     install_edge(apk, edge_version)
@@ -920,7 +523,7 @@ def main(manage_emulator: bool = False) -> None:
     enable_edge_developer_options()
     sideload_extension(crx)
     run_browser_assertions(crx_id)
-    log("PASS: Edge Android arm64-v8a emulator E2E")
+    log("PASS: arm64-v8a Edge Android E2E on API 35 x86_64 translation")
 
 
 def self_check() -> None:
@@ -945,18 +548,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-check", action="store_true")
     parser.add_argument("--verify-edge-apk", action="store_true")
-    parser.add_argument("--build-emulator-bundle", action="store_true")
-    parser.add_argument("--managed-emulator", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_check:
             self_check()
         elif args.verify_edge_apk:
             verify_edge_apk()
-        elif args.build_emulator_bundle:
-            create_arm64_emulator_bundle()
         else:
-            main(args.managed_emulator)
+            main()
     except Exception as error:
         log(f"FAIL: {error}")
         if not args.self_check and not args.verify_edge_apk:

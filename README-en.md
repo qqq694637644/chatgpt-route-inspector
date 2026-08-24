@@ -52,13 +52,15 @@ This repository no longer provides a Chrome Web Store installation path.
 
 After the extension has an Edge Add-ons ID / update URL, administrators can deploy it to managed Android devices through Edge's `ExtensionInstallForcelist` / `ExtensionSettings` policies.
 
-### Android arm64-v8a emulator E2E and device validation
+### Android ARM translation E2E and device validation
 
 `dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses two infrastructure jobs. An x86_64 Ubuntu builder only shallow-syncs `emu-master-dev` and cross-builds the ARM64 Emulator bundle with Google's supported `--target linux_aarch64` path. The actual browser E2E runs only on GitHub's native `ubuntu-24.04-arm` runner. The ARM job verifies that the downloaded Emulator host executable is ARM64, then downloads the Google APIs API 35 `arm64-v8a` system image, verifies the repository-provided digest, creates the AVD, and boots it. It does not use Android's ARM-on-x86 native bridge and never falls back to x86_64 Android.
+The GitHub Actions `Edge Android ARM translation E2E` workflow uses the standard Android CI shape: `ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`. `reactivecircus/android-emulator-runner` owns the AVD lifecycle, while Python owns the test logic and requires Android to advertise `arm64-v8a` in its ABI list.
 
-The Python test requires Android itself to report `ro.product.cpu.abi=arm64-v8a`, `uname -m` as `aarch64`/`arm64`, no active native bridge, and the installed Edge package as `primaryCpuAbi=arm64-v8a`. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+The Python test requires an API 35 x86_64 emulator with `arm64-v8a` in `ro.product.cpu.abilist`; the downloaded Edge APK must contain only ARM64 native libraries and the installed Edge package must report `primaryCpuAbi=arm64-v8a`. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+
+A previous real CI run observed Edge Canary crashing with `SIGSEGV` on this ARM translation path. The workflow intentionally keeps the standard GitHub Android CI design and treats such a crash as a real failure, with logcat/UI evidence uploaded instead of falling back to a custom emulator.
 
 Automated sideloading of an unpublished extension uses Edge Canary; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
 
@@ -132,7 +134,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-Android E2E runs in an `arm64-v8a` emulator through `tests/android/run_edge_android_e2e.py --managed-emulator`. The workflow YAML is limited to checkout, runtime/dependency installation, build, invoking the Python file, and uploading evidence. Emulator/system-image acquisition and verification, AVD lifecycle, APK acquisition/signature checks, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
+Android E2E runs through `tests/android/run_edge_android_e2e.py`. The workflow YAML is limited to checkout, runtime/dependency installation, build, KVM/AVD orchestration, invoking the Python file, and uploading evidence. APK acquisition/signature checks, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
 
 ## Disclaimer
 

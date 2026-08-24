@@ -1,12 +1,14 @@
-# Edge Android arm64-v8a E2E
+# Edge Android arm64-v8a translation E2E
 
 This directory contains the Python-driven Android E2E used by `.github/workflows/edge-android-e2e.yml`.
 
 ## Test boundary
 
-The test runs a real **arm64-v8a Microsoft Edge Canary APK** inside a real **arm64-v8a Android system image**. Desktop Edge/Chromium is not used as a browser substitute.
+The test runs a real **arm64-v8a Microsoft Edge Canary APK** inside the standard GitHub Android CI shape: **Ubuntu 24.04 + KVM + Android API 35 x86_64 emulator** with Android's advertised `arm64-v8a` translation support. Desktop Edge/Chromium is not used as a browser substitute.
 
-The workflow uses two infrastructure jobs. An x86_64 Ubuntu builder runs `run_edge_android_e2e.py --build-emulator-bundle` to follow Google's supported cross-build path for a Linux-aarch64 Emulator: shallow-sync `emu-master-dev`, build `external/qemu` with `--target linux_aarch64`, verify the resulting executable is ARM64, and package only the runtime distribution. The E2E job then runs on native `ubuntu-24.04-arm`, downloads that ARM64 bundle, and invokes `run_edge_android_e2e.py --managed-emulator`. Python separately downloads the Google APIs API 35 `arm64-v8a` system image and verifies the repository-provided digest before creating the AVD. No x86_64 Android image or ARM-on-x86 native bridge is used as the test platform. The test rejects the environment unless Android reports `ro.product.cpu.abi=arm64-v8a`, `uname -m` is `aarch64`/`arm64`, and no native bridge is active.
+The workflow has one `ubuntu-24.04` job. `reactivecircus/android-emulator-runner` provisions the API 35 `google_apis/x86_64` AVD and KVM acceleration. Python then rejects the environment unless Android reports API 35, primary ABI `x86_64`, kernel machine `x86_64`, and `arm64-v8a` in `ro.product.cpu.abilist`. The Edge APK itself must still be the ARM64 variant and the installed package must report `primaryCpuAbi=arm64-v8a`.
+
+This is intentionally the standard GitHub Android CI approach. A previous real run showed Edge Canary can still crash with `SIGSEGV` under Android's ARM translation; that is a known product/runtime risk, not hidden by a custom emulator fallback. If it happens again, the job must fail and upload logcat/UI evidence.
 
 The workflow YAML is only environment orchestration. APK download and verification, CRX3 creation, Android UI automation, DevTools/CDP assertions, screenshots, and failure evidence collection are implemented in `run_edge_android_e2e.py`. Do not move test logic into inline Python, `python -c`, shell heredocs, or YAML-generated Python source.
 
@@ -27,7 +29,7 @@ Downloaded APKs and the ephemeral CRX signing key live under `.tmp/edge-android-
 
 The emulator test verifies:
 
-1. Android itself reports primary ABI `arm64-v8a` and `uname -m` reports ARM64.
+1. Android reports API 35 on an x86_64 KVM AVD and advertises `arm64-v8a` translation support.
 2. The pinned Microsoft-signed Edge Canary APK is installed.
 3. Android reports the installed Edge package as `primaryCpuAbi=arm64-v8a`.
 4. The current `dist/edge-android` build is packaged as CRX3 and side-loaded through Edge Android Developer Options.
@@ -53,6 +55,4 @@ The pinned Edge APK trust inputs can be checked independently with:
 python tests/android/run_edge_android_e2e.py --verify-edge-apk
 ```
 
-`python tests/android/run_edge_android_e2e.py --managed-emulator` owns the full emulator lifecycle on a native ARM64 Linux runner. Running the file without flags expects an already booted `arm64-v8a` Android emulator reachable through ADB with no ARM native bridge active.
-
-`python tests/android/run_edge_android_e2e.py --build-emulator-bundle` is infrastructure-only: it must run on x86_64 Linux and produces the ARM64 host Emulator bundle consumed by the ARM runner.
+Running `python tests/android/run_edge_android_e2e.py` expects the workflow-provisioned API 35 x86_64 emulator to be booted and reachable through ADB.

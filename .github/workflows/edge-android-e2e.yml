@@ -1,4 +1,4 @@
-name: Edge Android arm64-v8a E2E
+name: Edge Android ARM translation E2E
 
 on:
   pull_request:
@@ -13,50 +13,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build-arm64-emulator:
-    name: Cross-build Linux-aarch64 Android Emulator
-    runs-on: ubuntu-24.04
-    timeout-minutes: 90
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.12'
-          cache: pip
-          cache-dependency-path: tests/android/requirements.txt
-
-      - name: Install Python E2E dependencies
-        run: python -m pip install --requirement tests/android/requirements.txt
-
-      - name: Cross-build Linux-aarch64 Android Emulator
-        run: python tests/android/run_edge_android_e2e.py --build-emulator-bundle
-
-      - name: Upload Emulator cross-build logs
-        if: always()
-        uses: actions/upload-artifact@v6
-        with:
-          name: android-emulator-cross-build-logs-${{ github.run_id }}
-          path: .tmp/edge-android-e2e/logs
-          if-no-files-found: warn
-          retention-days: 3
-
-      - name: Upload Linux-aarch64 Emulator bundle
-        uses: actions/upload-artifact@v6
-        with:
-          name: android-emulator-linux-aarch64
-          path: artifacts/android-emulator-build/android-emulator-linux-aarch64.tar.gz
-          if-no-files-found: error
-          retention-days: 1
-
   edge-android-e2e:
-    name: Edge Canary / Android arm64-v8a
-    runs-on: ubuntu-24.04-arm
-    needs: build-arm64-emulator
-    timeout-minutes: 90
+    name: Edge Canary arm64-v8a / API 35 x86_64
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
 
     steps:
       - name: Checkout
@@ -84,20 +44,39 @@ jobs:
           npm run build
           npm run verify:edge-android
 
-      - name: Download Linux-aarch64 Emulator bundle
-        uses: actions/download-artifact@v6
-        with:
-          name: android-emulator-linux-aarch64
-          path: .tmp/edge-android-e2e/emulator-bundle
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
 
-      - name: Run Edge Android arm64-v8a emulator E2E
-        run: python tests/android/run_edge_android_e2e.py --managed-emulator
+      - name: Run arm64 Edge on Android API 35 translation
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_7
+          cores: 4
+          ram-size: 4096M
+          heap-size: 512M
+          disk-size: 8G
+          disable-animations: true
+          emulator-options: >-
+            -no-snapshot
+            -no-window
+            -gpu swiftshader_indirect
+            -noaudio
+            -no-boot-anim
+            -camera-back none
+            -camera-front none
+          script: python tests/android/run_edge_android_e2e.py
 
       - name: Upload Android E2E evidence
         if: always()
         uses: actions/upload-artifact@v6
         with:
-          name: edge-android-arm64-v8a-e2e-${{ github.run_id }}
+          name: edge-android-arm-translation-e2e-${{ github.run_id }}
           path: artifacts/edge-android-e2e
           if-no-files-found: warn
           retention-days: 14
