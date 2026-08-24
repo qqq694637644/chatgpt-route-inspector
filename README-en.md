@@ -56,7 +56,9 @@ After the extension has an Edge Add-ons ID / update URL, administrators can depl
 
 `dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-The GitHub Actions `Edge Android arm64-v8a E2E` workflow boots an **Android `arm64-v8a`** emulator, installs a pinned Microsoft Edge Canary build inside that emulator, and loads the current build through Edge Android's CRX developer-install surface. The current workflow selects an API 35 system image, but the test contract requires only the Android `arm64-v8a` ABI and is not tied to a host architecture or a specific Android release. The Python test verifies the ABI, Microsoft APK signing certificate, installed package version, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses the Google API 35 Android Emulator's ARM64 native translation to execute a **real arm64-v8a Microsoft Edge Canary APK**. The test requires Android's ABI list to contain `arm64-v8a` and the installed Edge package to report `primaryCpuAbi=arm64-v8a`, then loads the current build through Edge Android's CRX developer-install surface. It also verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
+
+A true ARM AVD is not used because the GitHub-hosted ARM macOS VM does not expose nested Hypervisor.Framework; the real CI run failed at `HV_UNSUPPORTED`. The CI host architecture is not a test target, and no desktop browser substitutes for Edge Android.
 
 Automated sideloading of an unpublished extension uses Edge Canary; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
 

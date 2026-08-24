@@ -49,9 +49,12 @@ def ensure_arm64_android() -> None:
     api = adb("shell", "getprop", "ro.build.version.sdk").stdout.strip()
     release = adb("shell", "getprop", "ro.build.version.release").stdout.strip()
     abi = adb("shell", "getprop", "ro.product.cpu.abi").stdout.strip()
-    log(f"device Android {release}, API {api}, ABI {abi}")
-    if abi != "arm64-v8a":
-        raise AssertionError(f"expected arm64-v8a emulator, got {abi}")
+    abi_list = adb("shell", "getprop", "ro.product.cpu.abilist").stdout.strip()
+    native_bridge = adb("shell", "getprop", "ro.dalvik.vm.native.bridge").stdout.strip()
+    supported_abis = {value.strip() for value in abi_list.split(",") if value.strip()}
+    log(f"device Android {release}, API {api}, primary ABI {abi}, ABI list {abi_list}, native bridge {native_bridge or '<none>'}")
+    if "arm64-v8a" not in supported_abis:
+        raise AssertionError(f"Android image does not advertise arm64-v8a support: {abi_list}")
 
 
 def locate_android_tool(name: str) -> str:
@@ -130,11 +133,14 @@ def build_crx() -> tuple[Path, str]:
 
 
 def install_edge(apk: Path) -> None:
-    log("installing Edge Canary into arm64-v8a Android emulator")
+    log("installing arm64-v8a Edge Canary into Android emulator")
     adb("install", "-r", str(apk), timeout=240)
     package_dump = adb("shell", "dumpsys", "package", EDGE_PACKAGE).stdout
     if f"versionName={EDGE_VERSION}" not in package_dump:
         raise AssertionError("Edge Canary did not install at the pinned version")
+    if "primaryCpuAbi=arm64-v8a" not in package_dump:
+        raise AssertionError("installed Edge Canary is not using arm64-v8a as its primary package ABI")
+    log("verified installed Edge primaryCpuAbi=arm64-v8a")
 
 
 def screenshot(name: str) -> None:

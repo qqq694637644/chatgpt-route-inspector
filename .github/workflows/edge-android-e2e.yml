@@ -14,8 +14,8 @@ concurrency:
 
 jobs:
   edge-android-e2e:
-    name: Edge Canary / Android arm64-v8a
-    runs-on: macos-15
+    name: Edge Canary / Android arm64-v8a translation
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
 
     steps:
@@ -44,20 +44,24 @@ jobs:
           npm run build
           npm run verify:edge-android
 
+      - name: Enable Android emulator KVM
+        run: sudo chmod 666 /dev/kvm
+
       - name: Run Edge Android arm64-v8a emulator E2E
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
           target: google_apis
-          arch: arm64-v8a
+          arch: x86_64
           profile: pixel_7
-          cores: 3
+          cores: 4
           ram-size: 4096M
           heap-size: 512M
           disk-size: 8G
           disable-animations: true
           emulator-options: >-
-            -no-snapshot
+            -no-snapshot-load
+            -no-snapshot-save
             -no-window
             -gpu swiftshader_indirect
             -noaudio
