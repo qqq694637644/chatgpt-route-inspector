@@ -52,17 +52,13 @@ This repository no longer provides a Chrome Web Store installation path.
 
 After the extension has an Edge Add-ons ID / update URL, administrators can deploy it to managed Android devices through Edge's `ExtensionInstallForcelist` / `ExtensionSettings` policies.
 
-### Android x86_64 E2E and device validation
+### Release and Android device validation
 
-`dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
+Build, GitHub Release, Microsoft Edge Add-ons submission, and phone installation are documented in [Build, Release, and Edge Android phone installation](docs/release-and-install.md).
 
-The GitHub Actions `Edge Android x86_64 E2E` workflow uses the standard Android CI shape: `ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`. `reactivecircus/android-emulator-runner` owns the AVD lifecycle, while Python owns the test logic and requires Android itself to be API 35 / x86_64.
+`dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked, Windows Playwright, and GitHub x86_64 Android emulators are not Edge Android device acceptance.**
 
-The Python test confirms the emulator is API 35 / x86_64, then tries public Edge Stable, Beta, Dev, and Canary APK candidates in order. The selected Edge APK must contain `x86_64` native libraries, and the installed Edge package must report `primaryCpuAbi=x86_64`. If all download sources provide only ARM64/ARMv7 Edge APKs, the test fails before installation and lists each channel's ABI instead of relying on ARM translation. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
-
-A previous real CI run observed ARM64-only Edge Canary crashing with `SIGSEGV` on Android's x86_64 ARM-translation path. The current test no longer installs ARM-only Edge packages; if no x86_64 Edge APK is available, the workflow fails early instead of falling back to translation.
-
-Automated sideloading of an unpublished extension uses the first available x86_64 Edge channel; the production baseline remains Edge Android 151+. A physical phone/tablet should still be used for store distribution, touch sizing, and download acceptance.
+Public Microsoft Edge Android APK sources currently do not provide an x86_64 variant. Installing an ARM64-only Edge APK in GitHub's standard x86_64 AVD forces ARM translation, where Edge has been observed crashing with `SIGSEGV`. This repository therefore no longer keeps a GitHub Android E2E workflow. Android runtime acceptance is performed on a real Android Edge device or controlled release path.
 
 ## Build from source
 
@@ -121,7 +117,7 @@ The extension does not request `debugger`, `cookies`, `webRequest`, `history`, o
 
 ## Android device acceptance
 
-See the [Edge Android manual verification guide](docs/edge-android-manual-verification.md) for installation, interaction, and route-capture acceptance on a physical Android device.
+See the [Edge Android manual verification guide](docs/edge-android-manual-verification.md) for installation, interaction, and route-capture acceptance on a physical Android device. See the [release guide](docs/release-and-install.md) for build, release, and phone installation steps.
 
 ## Development validation
 
@@ -134,7 +130,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-Android E2E runs through `tests/android/run_edge_android_e2e.py`. The workflow YAML is limited to checkout, runtime/dependency installation, build, KVM/AVD orchestration, invoking the Python file, and uploading evidence. APK acquisition/signature checks, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
+This repository no longer keeps a GitHub Android E2E workflow. Public Edge Android APKs do not provide an x86_64 variant, and GitHub's x86_64 AVD is not representative of the real Edge Android runtime. Device acceptance remains documented in the manual verification guide.
 
 ## Disclaimer
 

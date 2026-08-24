@@ -5,10 +5,10 @@ __pycache__/
 dist/
 release/
 coverage/
+artifacts/
+.tmp/
 playwright-report/
 test-results/
 output/playwright/
-artifacts/edge-android-e2e/
-.tmp/
 DEVELOPMENT_LOG.md
 *.log

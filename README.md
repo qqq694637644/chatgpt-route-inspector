@@ -52,17 +52,13 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 获得 Edge Add-ons 的扩展 ID / 更新地址后，可由管理员通过 Edge Android 的 `ExtensionInstallForcelist` / `ExtensionSettings` 策略进行托管部署。
 
-### Android x86_64 E2E 与真机验证
+### Release 与 Android 真机验证
 
-`dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
+构建、GitHub Release、Microsoft Edge Add-ons 提交和手机安装流程见 [构建、Release 与 Edge Android 手机安装](docs/release-and-install.md)。
 
-GitHub Actions 的 `Edge Android x86_64 E2E` workflow 使用标准 Android CI 结构：`ubuntu-24.04 + KVM + API 35 google_apis/x86_64 AVD`。AVD 生命周期由 `reactivecircus/android-emulator-runner` 管理；Python 只负责测试逻辑，并要求 Android 自身为 API 35 / x86_64。
+`dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked、Windows Playwright 或 GitHub x86_64 Android emulator 都不属于 Edge Android 真机验收**。
 
-Python 测试会确认模拟器为 API 35 / x86_64；随后按 Edge Stable、Beta、Dev、Canary 的顺序尝试公开 APK 候选。被选中的 Edge APK 必须包含 `x86_64` native libraries，安装后的 Edge 包必须为 `primaryCpuAbi=x86_64`。如果所有下载源都只提供 ARM64/ARMv7 Edge APK，测试会在安装前失败并列出每个 channel 的 ABI，不会在标准 x86_64 AVD 中使用 ARM-only 包。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
-
-此前真实 CI 已观察到 ARM64-only Edge Canary 在 x86_64 AVD 的 ARM translation 路径下发生 `SIGSEGV`。因此当前测试不再安装 ARM-only Edge 包；如果没有可用的 x86_64 Edge APK，workflow 必须早失败，而不是退回 translation。
-
-未发布扩展的自动化侧载使用第一个可用的 x86_64 Edge channel；这不改变生产基线仍为 Edge Android 151+。真实手机/平板仍应执行手工验收，尤其是商店分发、触控尺寸和下载行为。
+公开 Microsoft Edge Android APK 当前没有可用的 x86_64 变体；在 GitHub 标准 x86_64 AVD 中安装 ARM64-only Edge 会走 ARM translation，并已观察到 Edge 进程 `SIGSEGV`。因此本仓库不再保留 GitHub Android E2E workflow。Android 运行验收改为真实 Android Edge 设备上的手工验收或受控发布验收。
 
 ## 从源码构建
 
@@ -121,7 +117,7 @@ release/SHA256SUMS.txt
 
 ## Android 真机验收
 
-Android 真机的安装、交互与路由捕获验收项见 [Edge Android 手工核验指南](docs/edge-android-manual-verification.md)。
+Android 真机的安装、交互与路由捕获验收项见 [Edge Android 手工核验指南](docs/edge-android-manual-verification.md)。构建、Release 和手机安装流程见 [Release 指南](docs/release-and-install.md)。
 
 ## 开发验证
 
@@ -134,7 +130,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-Android E2E 入口为 `tests/android/run_edge_android_e2e.py`。workflow YAML 只负责 checkout、运行时/依赖安装、构建、KVM/AVD 编排、调用 Python 和上传 evidence；APK 获取与签名校验、Android UI 自动化、CRX 安装和浏览器断言全部由 Python 文件实现，不使用 `python -c`、heredoc 或 YAML 内联 Python。真实手机/平板的补充验收仍见手工核验指南。
+本仓库不再保留 GitHub Android E2E workflow；公开 Edge Android APK 缺少 x86_64 变体，GitHub x86_64 AVD 无法代表真实 Edge Android 运行环境。真实手机/平板验收见手工核验指南。
 
 ## 免责声明
 
