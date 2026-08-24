@@ -56,7 +56,7 @@ Languages: [简体中文](README.md) · [English](README-en.md)
 
 `dist/edge-android` 只是待部署的扩展产物，**桌面 Edge/Chromium 的 Load unpacked 或 Windows Playwright 不属于 Android E2E**。
 
-GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 会启动**真正的 Android `arm64-v8a` system image**，并在其中安装真实的 arm64-v8a Microsoft Edge Canary APK。AVD 使用 Android Emulator 的软件 CPU 仿真（`-accel off`），不依赖宿主嵌套虚拟化，也不走 Android 的 ARM-on-x86 native bridge。
+GitHub Actions 的 `Edge Android arm64-v8a E2E` workflow 使用 GitHub 原生 `ubuntu-24.04-arm` runner 作为基础设施；Android 环境本身由 Python 测试脚本管理。脚本下载 Google 官方 Linux-aarch64 Emulator 构建和 Google APIs `arm64-v8a` system image、校验 system image 仓库摘要、创建 AVD，并用 ARM64 软件虚拟化路径启动。测试不走 Android 的 ARM-on-x86 native bridge，也不会回退到 x86_64 Android。
 
 Python 测试会强制确认 Android 自身 `ro.product.cpu.abi=arm64-v8a`、`uname -m` 为 `aarch64/arm64`、native bridge 未启用，同时确认安装后的 Edge 包为 `primaryCpuAbi=arm64-v8a`。之后再验证 Microsoft APK 签名证书、扩展 service worker、`MAIN` / `ISOLATED` 注入、页面浮窗交互，以及 `fetch` 请求最终写入 `chrome.storage.local` 的完整链路。
 
@@ -132,7 +132,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-Android E2E 由 GitHub Actions 在 `arm64-v8a` 模拟器内执行，入口为 `tests/android/run_edge_android_e2e.py`。workflow YAML 只负责环境编排；APK 获取与校验、Android UI 自动化、CRX 安装和浏览器断言全部由 Python 文件实现，不使用 `python -c`、heredoc 或 YAML 内联 Python。真实手机/平板的补充验收仍见手工核验指南。
+Android E2E 由 GitHub Actions 在 `arm64-v8a` 模拟器内执行，入口为 `tests/android/run_edge_android_e2e.py --managed-emulator`。workflow YAML 只负责 checkout、运行时/依赖安装、构建、调用 Python 和上传 evidence；Emulator/system image 获取与校验、AVD 生命周期、APK 获取与签名校验、Android UI 自动化、CRX 安装和浏览器断言全部由 Python 文件实现，不使用 `python -c`、heredoc 或 YAML 内联 Python。真实手机/平板的补充验收仍见手工核验指南。
 
 ## 免责声明
 

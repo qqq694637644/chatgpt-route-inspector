@@ -56,7 +56,7 @@ After the extension has an Edge Add-ons ID / update URL, administrators can depl
 
 `dist/edge-android` is a deployable extension artifact. **Desktop Edge/Chromium Load unpacked and Windows Playwright are not Android E2E.**
 
-The GitHub Actions `Edge Android arm64-v8a E2E` workflow boots a **real Android `arm64-v8a` system image** and installs a real arm64-v8a Microsoft Edge Canary APK inside it. The AVD uses Android Emulator software CPU emulation (`-accel off`), so it does not depend on nested host virtualization and does not use Android's ARM-on-x86 native bridge.
+The GitHub Actions `Edge Android arm64-v8a E2E` workflow uses GitHub's native `ubuntu-24.04-arm` runner as infrastructure only; the Python test owns the Android environment. It downloads Google's official Linux-aarch64 Emulator build and Google APIs `arm64-v8a` system image, verifies the repository-provided system-image digest, creates the AVD, and starts it through the ARM64 software-virtualization path. It does not use Android's ARM-on-x86 native bridge and never falls back to x86_64 Android.
 
 The Python test requires Android itself to report `ro.product.cpu.abi=arm64-v8a`, `uname -m` as `aarch64`/`arm64`, no active native bridge, and the installed Edge package as `primaryCpuAbi=arm64-v8a`. It then verifies the Microsoft APK signing certificate, extension service worker, `MAIN` / `ISOLATED` injection, overlay interaction, and the complete `fetch` request-to-`chrome.storage.local` pipeline.
 
@@ -132,7 +132,7 @@ npm run verify:edge-android
 npm run package
 ```
 
-Android E2E runs in an `arm64-v8a` emulator in GitHub Actions through `tests/android/run_edge_android_e2e.py`. The workflow YAML only orchestrates the environment; APK acquisition/verification, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
+Android E2E runs in an `arm64-v8a` emulator through `tests/android/run_edge_android_e2e.py --managed-emulator`. The workflow YAML is limited to checkout, runtime/dependency installation, build, invoking the Python file, and uploading evidence. Emulator/system-image acquisition and verification, AVD lifecycle, APK acquisition/signature checks, Android UI automation, CRX installation, and browser assertions all live in Python files, with no `python -c`, heredoc, or YAML-inline Python. Physical-device acceptance remains documented in the manual verification guide.
 
 ## Disclaimer
 
